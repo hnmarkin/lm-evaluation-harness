@@ -1,0 +1,28 @@
+task: dialtom_written
+custom_dataset: !function utils.load_written
+test_split: train
+output_type: generate_until
+doc_to_text: !function utils.doc_to_text_written
+doc_to_target: "{{steer}}"
+process_results: !function utils.process_results_written
+generation_kwargs:
+  # See dialtom_retrospective's template: no "\n\n" stop and a generous budget so a
+  # reasoning model's <think> preamble doesn't truncate the actual one-line inference.
+  until:
+    - "</s>"
+    - "<|im_end|>"
+  do_sample: false
+  temperature: 0.0
+  max_gen_toks: 1024
+metric_list:
+  - metric: bleu
+    aggregation: mean
+    higher_is_better: true
+  - metric: rouge_l
+    aggregation: mean
+    higher_is_better: true
+  - metric: bertscore_f1
+    aggregation: mean
+    higher_is_better: true
+metadata:
+  version: 0

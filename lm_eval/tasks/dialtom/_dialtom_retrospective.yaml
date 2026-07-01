@@ -1,0 +1,11 @@
+group: dialtom_retrospective
+task:
+  - dialtom_retrospective_mi
+  - dialtom_retrospective_esc
+  - dialtom_retrospective_pfg
+aggregate_metric_list:
+  - metric: acc
+    aggregation: mean
+    weight_by_size: true
+metadata:
+  version: 0

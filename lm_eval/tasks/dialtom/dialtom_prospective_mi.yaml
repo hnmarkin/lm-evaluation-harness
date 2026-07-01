@@ -1,0 +1,4 @@
+include: _dialtom_prospective_template_yaml
+task: dialtom_prospective_mi
+dataset_kwargs:
+  domain: MI
