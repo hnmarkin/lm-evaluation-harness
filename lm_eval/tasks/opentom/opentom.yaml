@@ -1,0 +1,30 @@
+group: opentom
+tag: [theory_of_mind]
+task:
+  - opentom_location_cg_fo
+  - opentom_location_cg_so
+  - opentom_location_fg_fo
+  - opentom_location_fg_so
+  - opentom_multihop_fo
+  - opentom_multihop_so
+  - opentom_attitude
+# Convenience macro-mean across the 7 genre/order partitions (each weighted equally).
+# This is NOT a paper-reported number — OpenToM reports per-partition macro-F1.
+aggregate_metric_list:
+  - metric: macro_f1
+    aggregation: mean
+    weight_by_size: false
+  - metric: macro_f1_strict
+    aggregation: mean
+    weight_by_size: false
+  - metric: acc
+    aggregation: mean
+    weight_by_size: false
+  - metric: acc_strict
+    aggregation: mean
+    weight_by_size: false
+  - metric: corrupt_rate
+    aggregation: mean
+    weight_by_size: false
+metadata:
+  version: 0

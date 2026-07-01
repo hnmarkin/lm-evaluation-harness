@@ -1,0 +1,29 @@
+custom_dataset: !function utils.load
+test_split: train
+output_type: generate_until
+doc_to_text: !function utils.doc_to_text
+doc_to_target: "{{answer}}"          # logging only; scoring lives in process_results
+process_results: !function utils.process_results
+generation_kwargs:
+  # OpenToM prompts say "answer without any explanation" / "Yes or No"; the original
+  # open-model runs stop at "\n"/"\n\n" (run_baseline.py) and GPT runs greedy
+  # (temperature=0). We decode greedily (deterministic) and stop on a blank line.
+  until:
+    - "</s>"
+    - "<|im_end|>"
+    - "\n\n"
+  do_sample: false
+  temperature: 0.0
+  max_gen_toks: 128
+# Set-level macro-F1 + accuracy are computed by custom !function aggregations that
+# consume the whole (gold,pred) list (the matthews_corrcoef / FANToM pattern).
+# `macro_f1`/`acc` drop corrupted preds (paper-faithful); `*_strict` count them wrong;
+# `corrupt_rate` reports the dropped fraction (lower is better).
+metric_list:
+  - {metric: macro_f1,        aggregation: !function utils.agg_macro_f1,        higher_is_better: true}
+  - {metric: macro_f1_strict, aggregation: !function utils.agg_macro_f1_strict, higher_is_better: true}
+  - {metric: acc,             aggregation: !function utils.agg_acc,             higher_is_better: true}
+  - {metric: acc_strict,      aggregation: !function utils.agg_acc_strict,      higher_is_better: true}
+  - {metric: corrupt_rate,    aggregation: !function utils.agg_corrupt_rate,    higher_is_better: false}
+metadata:
+  version: 0
