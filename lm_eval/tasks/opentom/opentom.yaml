@@ -14,10 +14,16 @@ aggregate_metric_list:
   - metric: macro_f1
     aggregation: mean
     weight_by_size: false
+  - metric: macro_f1_std
+    aggregation: mean
+    weight_by_size: false
   - metric: macro_f1_strict
     aggregation: mean
     weight_by_size: false
   - metric: acc
+    aggregation: mean
+    weight_by_size: false
+  - metric: acc_std
     aggregation: mean
     weight_by_size: false
   - metric: acc_strict

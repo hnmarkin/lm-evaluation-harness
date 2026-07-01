@@ -28,6 +28,23 @@ Architecture (see outputs/recon/OpenToM.md and outputs/references/OpenToM-build-
   aggregation   (custom !function per metric, the FANToM pattern) consumes the
         whole (gold,pred) list and computes set-level macro-F1 / accuracy.
 
+PAPER PROTOCOL (baked in — for direct comparability to run_baseline.py/evaluate.py):
+  * Subset: not all 596 narratives. run_baseline.py's coarse path samples the
+    seed-42 shuffle of `list(meta_data.keys())` and takes the first
+    num_batch*batch_size = 5*50 = 250 narratives, chunked into 5 batches of 50.
+    We replicate that subset+batch grouping exactly (`_subset`), tagging each doc
+    with `_batch` (0-4).  See `_subset`.
+  * Aggregation: the paper reports mean +/- std of PER-BATCH macro-F1 / accuracy
+    over the 5 batches (evaluate.py: per-batch f1_score, then np.mean/np.std) —
+    NOT one pooled score.  Our aggregations group by `_batch`, score each batch,
+    and return the batch mean (`macro_f1`/`acc`) or batch std (`*_std`).
+  * Multihop fullness downsampling: each narrative has 4 fullness + 2 accessibility
+    multihop questions; run_baseline.sample_questions drops 2 fullness so the
+    combined ("overall") metric is a balanced 2:2 mix.  We keep the first 2 fullness
+    per narrative (deterministic; the specific pair is within the paper's own std).
+  * Generation: open-model runs stop at ['\n','\n\n'] (run_baseline.py); the
+    template's `until` includes both.
+
 Two scoring policies are emitted side by side (user choice — "emit both"):
   * `macro_f1` / `acc`  — paper-faithful: corrupted preds (pred == -1) dropped
                           before scoring (evaluate.py behaviour); `corrupt_rate`
@@ -48,9 +65,11 @@ perspective filtering.
 
 import functools
 import json
+import random
 from pathlib import Path
 
 import datasets
+import numpy as np
 from sklearn.metrics import accuracy_score, f1_score
 
 # Vendored verbatim from load_baseline_model.py (chatgpt_prefix system message).
@@ -94,8 +113,54 @@ def _read_opentom():
     )
 
 
+@functools.lru_cache(maxsize=1)
+def _read_meta():
+    for parent in Path(__file__).resolve().parents:
+        cand = parent / "benchmarks" / "OpenToM" / "data" / "opentom_data" / "meta_data.json"
+        if cand.exists():
+            return json.load(open(cand, encoding="utf-8"))
+    raise FileNotFoundError(
+        "meta_data.json not found under any parent's benchmarks/OpenToM/data/opentom_data/"
+    )
+
+
+# Paper protocol constants (run_baseline.py defaults).
+_SEED = 42
+_NUM_BATCH = 5
+_BATCH_SIZE = 50
+_FULLNESS_KEEP = 2   # sample_questions drops 2 of the 4 fullness Qs -> keep 2 (balanced 2:2)
+
+
+@functools.lru_cache(maxsize=1)
+def _subset():
+    """Replicate run_baseline.py's coarse-path sampling exactly.
+
+    `set_seed(42)` then `random.shuffle(list(meta_data.keys()))`, then the first
+    num_batch*batch_size keys chunked into batches of batch_size (sample_entries +
+    the while-loop that stops after num_batch batches).  `random.Random(42)` is
+    verified byte-identical to the global `random.seed(42); random.shuffle`.
+
+    Returns:
+      key2batch:  {narrative_key: batch_idx (0.._NUM_BATCH-1)} for the 250 subset.
+      narr2key:   {narrative_text: narrative_key} (bijection over the 596 narratives)
+                  — opentom.json rows carry no key, so we map by narrative text.
+    """
+    meta = _read_meta()
+    keys = list(meta.keys())
+    random.Random(_SEED).shuffle(keys)
+    subset_keys = keys[: _NUM_BATCH * _BATCH_SIZE]
+    key2batch = {k: i // _BATCH_SIZE for i, k in enumerate(subset_keys)}
+
+    narr2key = {}
+    for k, v in meta.items():
+        narr2key.setdefault(v["narrative"], k)
+    return key2batch, narr2key
+
+
 def load(genre=None, order=None, granularity=None, **kwargs):
-    """Filter opentom.json to one partition and tag each doc with `_genre`.
+    """Filter opentom.json to one partition, restrict to the paper's 250-narrative
+    seed-42 subset, downsample multihop fullness to 2, and tag each doc with
+    `_genre` and `_batch`.
 
     Partitions mirror the official opentom_data/ split files:
       genre=location, granularity=coarse|fine, order=fo|so  (Loc_coarse / Loc_fine)
@@ -105,9 +170,17 @@ def load(genre=None, order=None, granularity=None, **kwargs):
     same rows: 'locate' questions are fine (place string), the rest are coarse
     ('initial', Yes/No) — exactly build_prompt.py's 'locate'/'initial' branch.
     """
+    key2batch, narr2key = _subset()
     type_suffix = {"fo": "-fo", "so": "-so"}.get(order)
     docs = []
+    fullness_kept = {}   # narrative_key -> count of fullness Qs kept (downsample to 2)
     for d in _read_opentom():
+        narrative = d["narrative"]
+        key = narr2key.get(narrative)
+        if key is None or key not in key2batch:
+            continue                        # not in the paper's 250-narrative subset
+        batch = key2batch[key]
+
         q = d["question"]
         t = q["type"]
         qtext = q["question"]
@@ -130,7 +203,16 @@ def load(genre=None, order=None, granularity=None, **kwargs):
         elif genre == "multihop":
             if type_suffix is None or t != "multihop" + type_suffix:
                 continue
-            _genre = "fullness" if "fullness" in qtext else "accessibility"
+            if "fullness" in qtext:
+                _genre = "fullness"
+                # Downsample: keep only the first _FULLNESS_KEEP fullness Qs per
+                # narrative (run_baseline.sample_questions drops the other 2).
+                c = fullness_kept.get(key, 0)
+                if c >= _FULLNESS_KEEP:
+                    continue
+                fullness_kept[key] = c + 1
+            else:
+                _genre = "accessibility"
         elif genre == "attitude":
             if t != "attitude":
                 continue
@@ -139,10 +221,11 @@ def load(genre=None, order=None, granularity=None, **kwargs):
             continue
 
         docs.append({
-            "narrative": d["narrative"],
+            "narrative": narrative,
             "question": qtext,
             "answer": str(q["answer"]),
             "_genre": _genre,
+            "_batch": batch,
             # BY-KEY access (never plot_info.values()) — see module docstring.
             "original_place": str(pi.get("original_place", "")),
             "move_to_place": str(pi.get("move_to_place", "")),
@@ -366,10 +449,14 @@ def _score(doc, results):
     else:
         raise ValueError(f"unknown genre: {genre!r}")
 
-    return {"gold": gold, "pred": pred, "genre": genre}
+    return {"gold": gold, "pred": pred, "genre": genre, "batch": doc["_batch"]}
 
 
-_BASE_METRICS = ["macro_f1", "macro_f1_strict", "acc", "acc_strict", "corrupt_rate"]
+_BASE_METRICS = [
+    "macro_f1", "macro_f1_std", "macro_f1_strict",
+    "acc", "acc_std", "acc_strict",
+    "corrupt_rate",
+]
 _MULTIHOP_METRICS = _BASE_METRICS + ["fullness_f1", "accessibility_f1"]
 
 
@@ -384,9 +471,11 @@ def process_results_multihop(doc, results):
 
 
 # ---------------------------------------------------------------------------
-# AGGREGATIONS — set-level macro-F1 / accuracy over the emitted (gold,pred) list
-# (the FANToM custom-!function pattern). Docs with gold None are always dropped
-# (no ground truth — matches evaluate.py's `valid_gt != None` filter).
+# AGGREGATIONS — PER-BATCH macro-F1 / accuracy, then mean (or std) over batches
+# (evaluate.py's protocol: per-batch f1_score, then np.mean/np.std over 5 batches).
+# Docs with gold None are always dropped (no ground truth — matches evaluate.py's
+# `valid_gt != None` filter). Corrupted preds (-1) are dropped per batch for the
+# paper-faithful metrics (`macro_f1`/`acc`); `corrupt_rate` reports the fraction.
 # ---------------------------------------------------------------------------
 
 def _pairs(items, strict):
@@ -409,10 +498,29 @@ def _pairs(items, strict):
     return golds, preds
 
 
-def _macro_f1(items, strict=False):
-    golds, preds = _pairs(items, strict)
+def _by_batch(items):
+    """Group emitted payloads by their `_batch` index (insertion order preserved)."""
+    batches = {}
+    for it in items:
+        batches.setdefault(it["batch"], []).append(it)
+    return batches
+
+
+def _perbatch(items, score_fn):
+    """Apply score_fn to each batch's items; return the list of per-batch scores,
+    skipping batches with no scorable items (score_fn returns None)."""
+    out = []
+    for _, bitems in sorted(_by_batch(items).items()):
+        s = score_fn(bitems)
+        if s is not None:
+            out.append(s)
+    return out
+
+
+def _batch_macro_f1(bitems, strict=False):
+    golds, preds = _pairs(bitems, strict)
     if not golds:
-        return float("nan")
+        return None
     if strict:
         # Average over the true classes only so the wrong-sentinel does not add a
         # phantom class; corrupted preds simply count as misclassifications.
@@ -421,46 +529,63 @@ def _macro_f1(items, strict=False):
     return f1_score(golds, preds, average="macro")
 
 
-def _acc(items, strict=False):
-    golds, preds = _pairs(items, strict)
+def _batch_acc(bitems, strict=False):
+    golds, preds = _pairs(bitems, strict)
     if not golds:
-        return float("nan")
+        return None
     return accuracy_score(golds, preds)
 
 
-def _corrupt_rate(items):
-    if not items:
-        return float("nan")
-    return sum(1 for it in items if it["pred"] == _CORRUPTED) / len(items)
+def _batch_corrupt(bitems):
+    if not bitems:
+        return None
+    # Denominator = all items in the batch (incl. gold=None), matching evaluate.py's
+    # `(len(pred_list) - len(valid_pred)) / len(pred_list)`.
+    return sum(1 for it in bitems if it["pred"] == _CORRUPTED) / len(bitems)
 
 
-def _subgenre_f1(items, subgenre):
-    return _macro_f1([it for it in items if it["genre"] == subgenre], strict=False)
+def _mean(scores):
+    return float(np.mean(scores)) if scores else float("nan")
+
+
+def _std(scores):
+    # evaluate.py reports np.std (population, ddof=0), printed as "Variance".
+    return float(np.std(scores)) if scores else float("nan")
 
 
 def agg_macro_f1(items):
-    return _macro_f1(items, strict=False)
+    return _mean(_perbatch(items, lambda b: _batch_macro_f1(b, strict=False)))
+
+
+def agg_macro_f1_std(items):
+    return _std(_perbatch(items, lambda b: _batch_macro_f1(b, strict=False)))
 
 
 def agg_macro_f1_strict(items):
-    return _macro_f1(items, strict=True)
+    return _mean(_perbatch(items, lambda b: _batch_macro_f1(b, strict=True)))
 
 
 def agg_acc(items):
-    return _acc(items, strict=False)
+    return _mean(_perbatch(items, lambda b: _batch_acc(b, strict=False)))
+
+
+def agg_acc_std(items):
+    return _std(_perbatch(items, lambda b: _batch_acc(b, strict=False)))
 
 
 def agg_acc_strict(items):
-    return _acc(items, strict=True)
+    return _mean(_perbatch(items, lambda b: _batch_acc(b, strict=True)))
 
 
 def agg_corrupt_rate(items):
-    return _corrupt_rate(items)
+    return _mean(_perbatch(items, _batch_corrupt))
 
 
 def agg_fullness_f1(items):
-    return _subgenre_f1(items, "fullness")
+    sub = [it for it in items if it["genre"] == "fullness"]
+    return _mean(_perbatch(sub, lambda b: _batch_macro_f1(b, strict=False)))
 
 
 def agg_accessibility_f1(items):
-    return _subgenre_f1(items, "accessibility")
+    sub = [it for it in items if it["genre"] == "accessibility"]
+    return _mean(_perbatch(sub, lambda b: _batch_macro_f1(b, strict=False)))
