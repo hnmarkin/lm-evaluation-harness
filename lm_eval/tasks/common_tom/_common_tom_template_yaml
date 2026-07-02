@@ -1,0 +1,21 @@
+custom_dataset: !function utils.load
+test_split: train
+output_type: generate_until
+doc_to_text: "{{prompt}}"
+doc_to_target: "{{answer}}"        # logging only; scoring lives in process_results
+process_results: !function utils.process_results
+generation_kwargs:
+  # Paper Appendix C uses temperature=1.0 for zero-shot OpenAI and Mistral-Instruct
+  # runs. No newline stop is used, so the extractor can see multi-line answers.
+  until:
+    - "</s>"
+    - "<|im_end|>"
+  do_sample: true
+  temperature: 1.0
+  max_gen_toks: 32
+metric_list:
+  - metric: acc
+    aggregation: mean
+    higher_is_better: true
+metadata:
+  version: 0

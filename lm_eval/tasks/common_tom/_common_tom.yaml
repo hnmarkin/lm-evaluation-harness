@@ -1,0 +1,11 @@
+group: common_tom
+task:
+  - common_tom_order_1
+  - common_tom_order_2
+  - common_tom_order_3
+aggregate_metric_list:
+  - metric: acc
+    aggregation: mean
+    weight_by_size: true
+metadata:
+  version: 0

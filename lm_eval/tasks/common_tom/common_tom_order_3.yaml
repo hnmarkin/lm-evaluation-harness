@@ -1,0 +1,4 @@
+include: _common_tom_template_yaml
+task: common_tom_order_3
+dataset_kwargs:
+  order: 3
