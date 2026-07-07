@@ -52,11 +52,17 @@ decision, not an oversight):
   `np.random.shuffle` on top of that is an extra re-randomization that only changes the
   label, not the content, and reproducing its exact sequentially-consumed RNG state buys
   nothing. (Same "already eval-ready; don't re-shuffle" call as the `dyntom` adapter.)
-- **Prospective options get a per-item deterministic shuffle**, seeded on the item's own
-  `id` (`random.Random(item_id)`) — there is no frozen order to reuse here (`distractors`
-  ships as an unordered list). Reproducible across our own re-runs; not letter-identical
-  to any one paper run (nothing would be, since a fresh shuffle happens every invocation
-  of the original script).
+- **Prospective options get a deterministic shuffle**, seeded on a per-**row**-unique key
+  (`random.Random(f"{domain}|{id}|{state}|{row_index}")`) — there is no frozen order to
+  reuse here (`distractors` ships as an unordered list). The row index is load-bearing:
+  the dialogue `id` is *not* unique (e.g. ESC has 203 rows but only 53 ids, and same-`id`
+  rows share the same `correct_action`), so an `id`-only seed would give every row in a
+  group the same permutation → the same gold slot → a gold-letter distribution skewed
+  away from uniform (measured ESC A:47/B:19/C:66/D:71 under the old `id`-only seed vs.
+  A:57/B:41/C:54/D:51 after the fix — the original's independent per-item `np.random`
+  shuffle is ~uniform). Reproducible across our own re-runs; not letter-identical to any
+  one paper run (nothing would be, since a fresh shuffle happens every invocation of the
+  original script).
 - **Written scores the FULL generated line against the full 3 references** (steer prefix
   included on both sides, e.g. "I feel stressed about..."), matching what the refs
   actually contain. `gen_prefix` was deliberately **not** used — it would only capture

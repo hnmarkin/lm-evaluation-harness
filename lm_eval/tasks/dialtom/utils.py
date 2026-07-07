@@ -38,11 +38,16 @@ Deviation notes (see README.md for the full list):
     This is the same "ship is already eval-ready; do not re-shuffle" call the dyntom
     adapter made.
   - Prospective options (correct_action + 3 distractors) have no such frozen order, so
-    each doc gets a per-item deterministic shuffle seeded on the item's own `id`
-    (`random.Random(item_id)`), not the original's sequentially-consumed global
-    `np.random` stream. Reproducible across our own re-runs; not letter-identical to
-    any specific paper run (which nothing except that run itself would be, in either
-    case, since a fresh shuffle happens every invocation of the original script).
+    each doc gets a deterministic shuffle seeded on a per-ROW-unique key
+    (`random.Random(f"{domain}|{id}|{state}|{row_index}")`), not the original's
+    sequentially-consumed global `np.random` stream. The row index is what guarantees
+    uniqueness: the dialogue `id` repeats across a dialogue's per-state rows and same-id
+    rows share the same correct_action, so seeding on `id` alone would hand every row in
+    a group the SAME permutation (same gold slot), skewing the gold-letter distribution
+    away from the near-uniform layout the original's independent per-item shuffle yields.
+    Reproducible across our own re-runs; not letter-identical to any specific paper run
+    (which nothing except that run itself would be, in either case, since a fresh shuffle
+    happens every invocation of the original script).
   - Prospective prompt keeps the original's literal (buggy) hardcoded "client" in
     "Mental State profile ... of client during the conversation" even for
     ESC/PFG domains where the recipient is Seeker/Persuadee -- transcribed verbatim
@@ -158,10 +163,10 @@ Answer:"""
 # PROSPECTIVE — LOADER + PROMPT-FN (context withheld; per-item deterministic shuffle)
 # ---------------------------------------------------------------------------
 
-def _shuffle_action_options(item_id, correct_text, distractor_texts):
+def _shuffle_action_options(seed, correct_text, distractor_texts):
     opts = [correct_text] + list(distractor_texts)
     order = list(range(len(opts)))
-    random.Random(item_id).shuffle(order)
+    random.Random(seed).shuffle(order)
     shuffled = [opts[i] for i in order]
     gold_letter = OPTION_LETTERS[order.index(0)]
     return shuffled, gold_letter
@@ -172,12 +177,19 @@ def load_prospective(domain=None, **kwargs):
     path = _data_dir() / f"{domain}_prospective_verified.json"
     raw = json.loads(path.read_text(encoding="utf8"))
     docs = []
-    for item in raw:
+    for i, item in enumerate(raw):
         mental_states_block = "\n".join(
             f"{s}: {item['options'][s][item['correct_option'][s]]}" for s in MENTAL_STATES
         )
+        # Seed on a per-ROW-unique key (row index + id + state), NOT `id` alone: the
+        # dialogue `id` repeats across a dialogue's per-state rows (e.g. ESC: 203 rows,
+        # 53 ids) and same-id rows share correct_action, so seeding on `id` alone gives
+        # every row in a group the SAME permutation -> same gold slot -> a gold-letter
+        # distribution skewed vs. the original's independent per-item np.random shuffle.
         shuffled, gold_letter = _shuffle_action_options(
-            item["id"], item["correct_action"], item["distractors"]
+            f"{domain}|{item['id']}|{item['state']}|{i}",
+            item["correct_action"],
+            item["distractors"],
         )
         shuffled = [_agent_replace(t, domain) for t in shuffled]
         docs.append(
