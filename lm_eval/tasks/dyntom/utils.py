@@ -95,24 +95,38 @@ def doc_to_text_cot(doc):
 _PAIR_RE = re.compile(
     r'["\']?(type_[a-z_]+\d+)["\']?\s*:\s*["\']?([a-zA-Z])["\']?'
 )
-# Isolates the first {...} block (strips markdown fences and surrounding prose)
+_QID_RE = re.compile(r"^type_[a-z_]+\d+$")
+# Isolates flat {...} blocks (strips markdown fences and surrounding prose)
 _JSON_OBJ_RE = re.compile(r"\{[^{}]*\}", re.S)
+
+
+def _normalize_answer_dict(obj):
+    parsed = {}
+    for key, value in obj.items():
+        qid = str(key)
+        if not _QID_RE.fullmatch(qid):
+            continue
+        letter = str(value).strip().lower()[:1]
+        if letter:
+            parsed[qid] = letter
+    return parsed
 
 
 def _parse_answers(gen):
     out = {}
-    # Try outermost JSON-like object first
-    m = _JSON_OBJ_RE.search(gen)
-    if m:
+    # Read every answer-looking JSON block in order. Later blocks override
+    # earlier echoed examples or drafts.
+    for m in _JSON_OBJ_RE.finditer(gen):
         try:
             obj = json.loads(m.group(0))
             if isinstance(obj, dict):
-                out = {k: str(v).strip().lower()[:1] for k, v in obj.items()}
+                out.update(_normalize_answer_dict(obj))
         except Exception:
             pass
-    # Regex fallback fills gaps (CoT models often emit prose alongside JSON)
+    # Regex fallback fills gaps (CoT models often emit prose alongside JSON).
+    # Later mentions override earlier ones for the same reason as JSON blocks.
     for qid, letter in _PAIR_RE.findall(gen):
-        out.setdefault(qid, letter.strip().lower())
+        out[qid] = letter.strip().lower()
     return out
 
 
