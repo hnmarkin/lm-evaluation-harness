@@ -1,0 +1,28 @@
+custom_dataset: !function utils.load
+test_split: train
+task: omnitom_extract
+tag: [theory_of_mind]
+output_type: generate_until
+doc_to_text: !function utils.doc_to_text_extract
+doc_to_target: "{{gold_beliefs}}"       # logging only
+process_results: !function utils.process_results_extract
+# Stage 1 is GENERATE-ONLY here: run with --predict_only --log_samples, then score the
+# generations OFFLINE through the repo's own GPT-5 judge via score_stage1_offline.py.
+# The metrics below are DIAGNOSTIC proxies (exact-string P/R/F1 -- a strict lower bound
+# on the semantic judge) so the task is still runnable / plumbing-testable standalone.
+# They are NOT the paper's Stage-1 F1. Run with the shipped eval_config_extract.yaml
+# (or --apply_chat_template --system_instruction "<SYSTEM_EXTRACT>") for the system turn.
+generation_kwargs:
+  do_sample: false
+  temperature: 0.0
+  max_gen_toks: 6000
+  until:
+    - "</s>"
+    - "<|im_end|>"
+metric_list:
+  - {metric: extract_exact_f1,        aggregation: mean, higher_is_better: true}
+  - {metric: extract_exact_precision, aggregation: mean, higher_is_better: true}
+  - {metric: extract_exact_recall,    aggregation: mean, higher_is_better: true}
+  - {metric: pred_row_count,          aggregation: mean, higher_is_better: true}
+metadata:
+  version: 0

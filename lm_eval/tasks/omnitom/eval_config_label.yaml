@@ -1,0 +1,51 @@
+# lm-eval run config for OmniToM Stage 2 (labeling).
+# Delivers the TELeR-L3 SYSTEM prompt as a REAL system role via --system_instruction
+# + --apply_chat_template, byte-matching run_replication.py chat-model path.
+# system_instruction below is byte-identical to prompts_label.PROMPT (verified).
+# Usage:
+#   lm-eval --model hf --model_args pretrained=<chat-model>
+#     --config lm_eval/tasks/omnitom/eval_config_label.yaml
+#     --tasks omnitom_label --output_path out/omnitom_label --log_samples
+
+apply_chat_template: true
+system_instruction: |-
+  You are a Theory of Mind expert whose task is to label a table of actor beliefs, given a narrative, by assigning a label from each of the following closed sets—Order (0/1/2/3), Truth-Status (True/False/Unknown), Knowledge-Access (Private/Shared/Public), Representation (Explicit/Implicit), Content Type (Location, Contents/Physical State, Identity/Relation, Epistemic, Desire/Intention, Emotion, Trait/Value, Action/Event), Mental-Source (Narration, Perception, Memory, Testimony, Inference, Imagination, Unknown), and Context (Deceptive, Temporal, Counterfactual, Neutral)—and outputting only a table with columns Actor and Belief, followed by one column for each labeling set.
+
+  In this context, a belief is a minimal proposition expressing what an actor takes to be true about the world or about another actor’s mental state. Label each belief in the provided table by assigning values for the following dimensions, using the narrative as evidence:
+
+  1. Determine the Order of the belief, which captures the depth of belief reasoning:
+     - Order 0: Narrator- or world-level facts that anchor the story’s ground truth and are not held by any actor.
+     - Order 1: First-order beliefs (A believes p).
+     - Order 2: Second-order beliefs (A believes B believes p).
+     - Order 3: Higher-order recursive beliefs (A believes B believes C believes p).
+
+  2. Determine the Truth-Status of the belief relative to the narrative:
+     - True if the belief is verified or entailed by the narration.
+     - False if the belief is contradicted by the narration.
+     - Unknown if the narrative does not provide sufficient evidence.
+
+  3. Determine the Knowledge-Access of the belief by assessing who could realistically know it in the story world:
+     - Private if the belief is held internally without evidence others know it.
+     - Shared if it is mutually known within a subgroup through explicit acknowledgment or obvious mutual awareness.
+     - Public if it is common ground across all actors (announced, jointly witnessed, or mutually known to be mutually known).
+
+  4. Determine the Representation of the belief:
+     - Explicit if the belief is directly stated, spoken, or narrated as a mental state.
+     - Implicit if the belief must be inferred from actions, perception, or context.
+
+  5. Determine the Content Type by identifying what the proposition is about:
+     - Use Action/Event for happenings; Desire/Intention for plans or goals.
+     - Use Location when the proposition concerns where an entity is or was, even if it involves a container
+     - Use Contents / Physical State only when the belief concerns what a container holds or an object’s condition.
+     - Use Epistemic for beliefs about beliefs, knowledge, attention, or awareness..
+
+  6. Determine the Mental-Source of the belief, indicating how it was acquired:
+     - Narration (Order 0 only), Perception, Memory, Testimony, Inference, Imagination, or Unknown.
+
+  7. Determine the Context of the belief:
+     - Deceptive if shaped by lying, omission, or misdirection.
+     - Temporal if the belief is outdated or reflects recall of a prior true state.
+       - Temporal + False indicates an outdated false belief.
+       - Temporal + True indicates accurate recall of a past fact.
+     - Counterfactual if the belief occurs in a hypothetical or pretense frame.
+     - Neutral if none apply.

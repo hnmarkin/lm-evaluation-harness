@@ -1,0 +1,32 @@
+custom_dataset: !function utils.load
+test_split: train
+output_type: generate_until
+doc_to_text: !function utils.doc_to_text_label
+doc_to_target: "{{gold_labels}}"        # logging only; scoring lives in process_results
+process_results: !function utils.process_results_label
+# Greedy decoding matching run_replication.py (do_sample=False, temperature=0.0,
+# max_new_tokens=6000). The original sets NO stop strings (generation runs to the
+# token cap / EOS); "</s>"/"<|im_end|>" are inert end-of-turn markers that cannot
+# appear inside a valid pipe table, so they only guard against a runaway 6000-token
+# decode without changing faithful output. Belief tables can be large (up to ~47
+# beliefs x 9 columns) -- pick a smoke model whose context exceeds the largest prompt.
+generation_kwargs:
+  do_sample: false
+  temperature: 0.0
+  max_gen_toks: 6000
+  until:
+    - "</s>"
+    - "<|im_end|>"
+# 8 per-story scalars, each meaned over stories == the repo's safe_mean-over-stories
+# (macro-average over stories; no story is empty so mean == safe_mean).
+metric_list:
+  - {metric: overall_acc,          aggregation: mean, higher_is_better: true}
+  - {metric: acc_order,            aggregation: mean, higher_is_better: true}
+  - {metric: acc_truth_status,     aggregation: mean, higher_is_better: true}
+  - {metric: acc_knowledge_access, aggregation: mean, higher_is_better: true}
+  - {metric: acc_representation,   aggregation: mean, higher_is_better: true}
+  - {metric: acc_content_type,     aggregation: mean, higher_is_better: true}
+  - {metric: acc_mental_source,    aggregation: mean, higher_is_better: true}
+  - {metric: acc_context,          aggregation: mean, higher_is_better: true}
+metadata:
+  version: 0
