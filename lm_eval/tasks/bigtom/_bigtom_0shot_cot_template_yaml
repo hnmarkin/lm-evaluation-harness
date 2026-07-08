@@ -1,0 +1,31 @@
+custom_dataset: !function utils.load
+test_split: train
+output_type: generate_until
+doc_to_text: "Story: {{story}}\nQuestion: {{question_with_choices}}"
+doc_to_target: "{{answer_target}}"
+process_results: !function utils.process_results_cot
+# System instruction, transcribed verbatim from
+# code/prompt_instructions/evaluate_cot_chat_model.txt (the chat-CoT variant --
+# distinct from evaluate_cot.txt, which is for the non-chat completion-style prompt).
+description: |-
+  Answer the questions based on the context. Reason step by step before answering in 'Thought: Let's think step by step'. Write your final answer as 'Answer:<option>)<answer>'. Always pick an option, do not say none of the above or that there is not enough information.
+# No "\n\n" stop: CoT reasoning commonly has blank lines between steps, and
+# truncating there would cut off the trailing "Answer:" line. max_gen_toks sized
+# generously beyond the paper's own 220 (small for modern/reasoning-capable chat
+# models that "think" before the final answer line).
+generation_kwargs:
+  until:
+    - "</s>"
+    - "<|im_end|>"
+  do_sample: false
+  temperature: 0.0
+  max_gen_toks: 1024
+metric_list:
+  - metric: acc
+    aggregation: mean
+    higher_is_better: true
+  - metric: error_rate
+    aggregation: mean
+    higher_is_better: false
+metadata:
+  version: 0

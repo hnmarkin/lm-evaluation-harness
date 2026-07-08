@@ -1,0 +1,6 @@
+include: _bigtom_1shot_template_yaml
+task: bigtom_1shot_forward_belief_1_false_belief
+dataset_kwargs:
+  variable: forward_belief
+  init_belief: 1
+  condition: false_belief

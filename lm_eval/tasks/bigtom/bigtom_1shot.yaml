@@ -1,0 +1,36 @@
+group: bigtom_1shot
+tag: [theory_of_mind]
+task:
+  - bigtom_1shot_forward_belief_0_true_belief
+  - bigtom_1shot_forward_belief_0_false_belief
+  - bigtom_1shot_forward_belief_0_true_control
+  - bigtom_1shot_forward_belief_0_false_control
+  - bigtom_1shot_forward_belief_1_true_belief
+  - bigtom_1shot_forward_belief_1_false_belief
+  - bigtom_1shot_forward_belief_1_true_control
+  - bigtom_1shot_forward_belief_1_false_control
+  - bigtom_1shot_forward_action_0_true_belief
+  - bigtom_1shot_forward_action_0_false_belief
+  - bigtom_1shot_forward_action_0_true_control
+  - bigtom_1shot_forward_action_0_false_control
+  - bigtom_1shot_forward_action_1_true_belief
+  - bigtom_1shot_forward_action_1_false_belief
+  - bigtom_1shot_forward_action_1_true_control
+  - bigtom_1shot_forward_action_1_false_control
+  - bigtom_1shot_backward_belief_0_true_belief
+  - bigtom_1shot_backward_belief_0_false_belief
+  - bigtom_1shot_backward_belief_0_true_control
+  - bigtom_1shot_backward_belief_0_false_control
+  - bigtom_1shot_backward_belief_1_true_belief
+  - bigtom_1shot_backward_belief_1_false_belief
+  - bigtom_1shot_backward_belief_1_true_control
+  - bigtom_1shot_backward_belief_1_false_control
+aggregate_metric_list:
+  - metric: acc
+    aggregation: mean
+    weight_by_size: true
+  - metric: error_rate
+    aggregation: mean
+    weight_by_size: true
+metadata:
+  version: 0
