@@ -1,0 +1,21 @@
+custom_dataset: !function utils.load
+test_split: train
+output_type: generate_until
+doc_to_text: !function utils.doc_to_text
+doc_to_target: "{{target}}"
+process_results: !function utils.process_results
+generation_kwargs:
+  until:
+    - "</s>"
+    - "<|im_end|>"
+    - "\n\n"
+  do_sample: false
+  temperature: 0.0
+  max_gen_toks: 64
+metric_list:
+  - {metric: pearson, aggregation: !function utils.agg_pearson, higher_is_better: true}
+  - {metric: mae, aggregation: !function utils.agg_mae, higher_is_better: false}
+  - {metric: parse_rate, aggregation: !function utils.agg_parse_rate, higher_is_better: true}
+metadata:
+  version: 0
+

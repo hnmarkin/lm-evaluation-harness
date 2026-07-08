@@ -1,0 +1,6 @@
+include: _sonli_explanation_template_yaml
+task: sonli_supporting
+tag: [theory_of_mind]
+doc_to_text: !function utils.doc_to_text_supporting
+doc_to_target: "{{supporting_explanation}}"
+
