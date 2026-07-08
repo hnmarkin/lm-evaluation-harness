@@ -31,6 +31,12 @@ decision, not an oversight):
 | `dialtom_prospective_{mi,esc,pfg}` (+ group `dialtom_prospective`) | MI/ESC/PFG | `generate_until` | `acc` |
 | `dialtom_written` | all 3 (single flat task; paper reports one overall number, not per-domain) | `generate_until` | `bleu`, `rouge_l`, `bertscore_f1` |
 
+Top-level group `dialtom` bundles all three (`dialtom_retrospective`, `dialtom_prospective`,
+`dialtom_written`) for a single `--tasks dialtom` invocation. It has no
+`aggregate_metric_list` — the three children don't share a metric (`acc` vs.
+`bleu`/`rouge_l`/`bertscore_f1`), so there's nothing meaningful to average across them;
+each child still reports its own metrics in the results table.
+
 ## Architecture
 
 - **doc = one item** (per-item protocol; no batching). Retrospective/Prospective each
