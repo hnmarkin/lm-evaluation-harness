@@ -1,0 +1,4 @@
+include: _sonli_direct_template_yaml
+task: sonli
+tag: [theory_of_mind]
+
