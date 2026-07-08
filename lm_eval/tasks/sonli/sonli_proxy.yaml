@@ -1,4 +1,3 @@
 include: _sonli_direct_template_yaml
-task: sonli
+task: sonli-proxy
 tag: [theory_of_mind]
-

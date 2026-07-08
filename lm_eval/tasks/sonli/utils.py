@@ -2,7 +2,7 @@
 
 The read-only benchmark lives under benchmarks/SoNLI. This adapter exposes:
 
-* sonli: a static, direct scalar plausibility task over eval.json.
+* sonli-proxy: a static, direct scalar plausibility task over eval.json.
 * sonli_supporting / sonli_opposing: stage-1 counterfactual explanation prompts.
 * sonli_judge: stage-2 judge scoring over a materialized JSONL of generated
   explanations, with Bayes posterior Pearson/MAE aggregation.
@@ -46,6 +46,13 @@ def _as_float(value: Any) -> float:
     if isinstance(value, (int, float)):
         return float(value)
     return float(str(value).strip())
+
+
+def clean_xml_tags(text: str) -> str:
+    """Remove the source pipeline's wrapper tags without rewriting content."""
+    if not isinstance(text, str):
+        return ""
+    return re.sub(r"</?(think|answer)>", "", text, flags=re.IGNORECASE).strip()
 
 
 def _base_docs() -> list[dict[str, Any]]:
@@ -271,9 +278,7 @@ def parse_judge_score(judge_response_content: str) -> int | None:
     if not judge_response_content:
         return None
 
-    content = re.sub(
-        r"</?(think|answer)>", "", str(judge_response_content), flags=re.IGNORECASE
-    ).strip()
+    content = clean_xml_tags(str(judge_response_content))
     match = re.search(r"SCORE:\s*(\d+)", content, re.MULTILINE | re.IGNORECASE)
     if match:
         score = int(match.group(1))
@@ -318,13 +323,13 @@ def process_results_explanation(doc: dict[str, Any], results: list[str]) -> dict
 def process_results_judge(doc: dict[str, Any], results: list[str]) -> dict[str, Any]:
     raw = results[0] if results else ""
     score = parse_judge_score(raw)
-    norm = score / 10.0 if score is not None else None
+    norm = score / 10.0 if score is not None else -1.0
     payload = {
         "uuid": doc["uuid"],
         "side": doc["side"],
         "gold": float(doc["human_score"]),
         "score": norm,
-        "parsed": norm is not None,
+        "parsed": score is not None,
     }
     return {metric: payload for metric in _JUDGE_METRICS}
 
@@ -345,11 +350,16 @@ def _judge_pairs(items: list[dict[str, Any]]) -> list[tuple[float, float]]:
             item["uuid"], {"gold": float(item["gold"]), "supporting": None, "opposing": None}
         )
         side = str(item.get("side", "")).lower()
-        if item.get("parsed"):
-            if side.startswith("support"):
-                entry["supporting"] = float(item["score"])
-            elif side.startswith("oppos"):
-                entry["opposing"] = float(item["score"])
+        score = item.get("score")
+        if score is None:
+            if item.get("parsed") is False:
+                score = -1.0
+            else:
+                continue
+        if side.startswith("support"):
+            entry["supporting"] = float(score)
+        elif side.startswith("oppos"):
+            entry["opposing"] = float(score)
 
     pairs = []
     for entry in grouped.values():
@@ -408,8 +418,6 @@ def agg_paired_rate(items: list[dict[str, Any]]) -> float:
     grouped: dict[str, set[str]] = {}
     for item in items:
         side = str(item.get("side", "")).lower()
-        if not item.get("parsed"):
-            continue
         if side.startswith("support"):
             grouped.setdefault(item["uuid"], set()).add("supporting")
         elif side.startswith("oppos"):
@@ -417,4 +425,3 @@ def agg_paired_rate(items: list[dict[str, Any]]) -> float:
     total = len({item["uuid"] for item in items})
     paired = sum(1 for sides in grouped.values() if {"supporting", "opposing"} <= sides)
     return paired / total if total else float("nan")
-

@@ -47,9 +47,9 @@ def _first_text(value: Any) -> str:
 
 def _generation_from_sample(sample: dict[str, Any]) -> str:
     text = _first_text(sample.get("filtered_resps", []))
-    if text:
-        return text
-    return _first_text(sample.get("resps", []))
+    if not text:
+        text = _first_text(sample.get("resps", []))
+    return utils.clean_xml_tags(text)
 
 
 def prepare_judge_inputs(
@@ -116,7 +116,7 @@ def score_judge_samples(judge_samples: Path, output: Path | None = None) -> dict
                 "uuid": doc["uuid"],
                 "side": doc["side"],
                 "gold": float(doc["human_score"]),
-                "score": score / 10.0 if score is not None else None,
+                "score": score / 10.0 if score is not None else -1.0,
                 "parsed": score is not None,
             }
         )

@@ -12,14 +12,14 @@ correlation with human scores; MAE is the companion calibration metric.
 
 | Task | Role | Metric |
 |---|---|---|
-| `sonli` | In-harness direct scalar plausibility task over `eval.json` | `pearson`, `mae`, `parse_rate` |
+| `sonli-proxy` | In-harness direct scalar plausibility proxy over `eval.json` | `pearson`, `mae`, `parse_rate` |
 | `sonli_supporting` | Stage-1 generation of supporting counterfactual explanations | `nonempty_rate` only; use `--predict_only --log_samples` |
 | `sonli_opposing` | Stage-1 generation of opposing counterfactual explanations | `nonempty_rate` only; use `--predict_only --log_samples` |
 | `sonli_judge` | Stage-2 judge scoring over materialized generated explanations | Bayes-posterior `pearson`, `mae`, `parse_rate`, `paired_rate` |
 
 ## Architecture
 
-`sonli` uses the 1,400-row human evaluation split from
+`sonli-proxy` uses the 1,400-row human evaluation split from
 `benchmarks/SoNLI/datasets/socialnli/eval.json`. Each doc is one
 `(dialogue, question, inference)` triple. The prompt asks the model to emit a
 single `SCORE: <number>` in `[0, 1]`; `process_results` parses the score and
@@ -34,6 +34,12 @@ generation directly into another task, so this adapter keeps the generation and
 judge prompts in lm-eval and uses `offline_score.py` for the handoff.
 
 ## Full Pipeline Path
+
+For HF chat models, use `--apply_chat_template` on every `sonli_supporting`,
+`sonli_opposing`, and `sonli_judge` run when emulating the source API path,
+which sends each prompt as one user message. Omit it only when intentionally
+emulating the source local-vLLM path, which passes raw prompt text. Do not
+compare runs unless this serialization choice is held fixed and reported.
 
 Run the stage-1 explanation prompts:
 
@@ -77,8 +83,8 @@ python lm-evaluation-harness/lm_eval/tasks/sonli/offline_score.py score \
 
 ```bash
 PYTHONIOENCODING=utf-8 lm-eval run --model hf --model_args pretrained=<model> \
-  --tasks sonli --include_path lm-evaluation-harness/lm_eval/tasks \
-  --limit 10 --log_samples --output_path outputs/sonli_direct
+  --tasks sonli-proxy --include_path lm-evaluation-harness/lm_eval/tasks \
+  --limit 10 --log_samples --output_path outputs/sonli_proxy
 ```
 
 Use `--apply_chat_template` for chat/instruction models when comparing chat
@@ -93,16 +99,19 @@ pipeline.
 - `parse_rate`: fraction of generations from which a valid numeric score was
   parsed.
 - `paired_rate` (`sonli_judge` only): fraction of items with both supporting
-  and opposing judge scores parsed, allowing the Bayes posterior to be computed.
+  and opposing judge rows available, allowing the Bayes posterior to be
+  computed even when one side failed numeric parsing.
 
-`pearson` and `mae` are computed over parsed direct predictions for `sonli`, and
-over complete support/opposition pairs for `sonli_judge`. Treat numbers with low
-`parse_rate` or `paired_rate` as plumbing failures, not comparable benchmark
-scores.
+`pearson` and `mae` are computed over parsed direct predictions for
+`sonli-proxy`, and over complete support/opposition row pairs for `sonli_judge`.
+For `sonli_judge`, failed judge parses keep `parsed: false` for `parse_rate` but
+enter Bayes scoring as `-1.0`, matching the source pipeline's clamped
+parse-failure behavior. Treat low `parse_rate` as a model/output-format warning;
+low `paired_rate` means the offline stage handoff is incomplete.
 
 ## Faithfulness Deviations
 
-1. **Direct `sonli` is a proxy.** The paper does not ask the model for one
+1. **Direct `sonli-proxy` is a proxy.** The paper does not ask the model for one
    direct scalar. It evaluates a multi-stage counterfactual reasoning pipeline.
    The direct task is included because scalar regression, extraction, and
    Pearson/MAE aggregation are expressible in lm-eval and useful for quick
@@ -116,11 +125,12 @@ scores.
    `src/prompts/*` and the judge score parser/Bayes formula from
    `src/experiments/experiment_one/experiment_one.py`.
 4. **Decoding.** Stage tasks use the benchmark constants `TEMPERATURE=0.7` and
-   `MAX_TOKENS=5000`. `sonli` direct uses greedy decoding with a short numeric
-   budget because it is not a paper protocol and should be reproducible.
-5. **Parse failures.** The benchmark pipeline expects a numeric judge score.
-   This adapter reports `parse_rate`/`paired_rate`; failed parses are excluded
-   from Pearson/MAE rather than silently imputed.
+   `MAX_TOKENS=5000`. `sonli-proxy` direct uses greedy decoding with a short
+   numeric budget because it is not a paper protocol and should be reproducible.
+5. **Parse failures.** The benchmark pipeline expects a numeric judge score but
+   normalizes failed parses to `-1`; the Bayes helper clamps that to the 0-side
+   of the scale. `sonli_judge` reproduces that behavior for Pearson/MAE while
+   still reporting `parse_rate` as a compliance diagnostic.
 
 ## Validation Notes
 
@@ -132,4 +142,3 @@ The released split has 1,400 rows. Natural partitions are:
 
 `offline_score.py released-baseline` computes Pearson/MAE for the released
 `counterfactual_score` against human scores as a model-free sanity check.
-
