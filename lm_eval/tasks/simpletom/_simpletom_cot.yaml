@@ -1,0 +1,11 @@
+group: simpletom_cot
+task:
+  - simpletom_cot_aware
+  - simpletom_cot_action
+  - simpletom_cot_judge
+aggregate_metric_list:
+  - metric: acc
+    aggregation: mean
+    weight_by_size: true
+metadata:
+  version: 0
