@@ -4,8 +4,7 @@
 Stage 1 (belief extraction) is scored by a LIVE GPT-5 semantic judge, which cannot run
 inside lm-eval.  So Stage 1 is run generate-only in the harness:
 
-    lm-eval --model hf --model_args pretrained=<model> \\
-        --config lm_eval/tasks/omnitom/eval_config_extract.yaml \\
+    lm-eval --model hf --model_args pretrained=<model> --apply_chat_template \\
         --tasks omnitom_extract --predict_only --log_samples \\
         --output_path out/omnitom_extract
 

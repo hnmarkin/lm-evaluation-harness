@@ -73,39 +73,41 @@ GPT-5 judge via `score_stage1_offline.py`.
 
 OmniToM's runner builds `[{system}, {user}]` and, for every model the paper evaluated
 (all chat models), calls `apply_chat_template` → a **genuine system role**
-(`run_replication.py:716`). To reproduce that context exactly, `doc_to_text` emits the
-**user prompt only** and the system prompt is delivered as a real system turn via a
-shipped run config:
+(`run_replication.py:716`). To reproduce that context exactly, each stage's system prompt
+lives in the **task's own `description` field**, which lm-eval delivers as a real system
+turn under `--apply_chat_template`; `doc_to_text` emits the **user prompt only**. No
+external config and no `--system_instruction` — just add `--apply_chat_template`:
 
 ```bash
 # Stage 2 (labeling) — the headline in-harness run:
 PYTHONIOENCODING=utf-8 lm-eval --model hf \
-  --model_args pretrained=<chat-model> \
-  --config lm_eval/tasks/omnitom/eval_config_label.yaml \
+  --model_args pretrained=<chat-model> --apply_chat_template \
   --tasks omnitom_label --batch_size auto \
   --output_path out/omnitom_label --log_samples
 
 # single category:
-lm-eval ... --config .../eval_config_label.yaml --tasks omnitom_label_sst --limit 5 --log_samples
+lm-eval ... --apply_chat_template --tasks omnitom_label_sst --limit 5 --log_samples
 # all 7 categories:
-lm-eval ... --config .../eval_config_label.yaml --tasks omnitom_label_by_category ...
+lm-eval ... --apply_chat_template --tasks omnitom_label_by_category ...
 ```
 
-`eval_config_{label,extract}.yaml` set `apply_chat_template: true` +
-`system_instruction: <the stage's system prompt>` (both **byte-verified identical** to
-`prompts_{label,extract}.PROMPT`). Equivalent to passing `--apply_chat_template
---system_instruction "<…>"` on the CLI.
+Each label task's `description` is **byte-verified identical** to `prompts_label.PROMPT`
+(and `omnitom_extract`'s to `prompts_extract.PROMPT`). Under `--apply_chat_template`
+lm-eval routes `description` into a `Message("system", …)` — the same system role
+`run_replication.py` builds for chat models (verified: identical rendering to passing
+`--system_instruction` explicitly). The two stages carry their own `description`, so there
+is nothing to remember or swap, and no system prompt leaks into other tasks in a run.
 
-> ⚠️ **Do not omit the config/flags.** Without `--system_instruction` the system prompt is
-> dropped; without `--apply_chat_template` the run targets a base-model context the paper
-> never used. The two stages have different system prompts, so use the matching config.
+> ⚠️ **Pass `--apply_chat_template`** (the standard chat-model flag). Without it the system
+> prompt is still included but prepended as plain text — the base-model concat path the
+> paper never used — instead of a genuine system role.
 
 ## Stage 1: run generate-only, then score offline
 
 ```bash
 # 1) generate extractions in-harness (no scoring):
 PYTHONIOENCODING=utf-8 lm-eval --model hf --model_args pretrained=<chat-model> \
-  --config lm_eval/tasks/omnitom/eval_config_extract.yaml \
+  --apply_chat_template \
   --tasks omnitom_extract --predict_only --log_samples \
   --output_path out/omnitom_extract
 
@@ -146,11 +148,12 @@ which cannot appear inside a valid pipe table.
    lm-eval cannot host. Reproduced faithfully via the repo's own judge+metrics
    (`score_stage1_offline.py`); the in-harness `extract_exact_*` metrics are labeled
    diagnostic proxies, **not** the paper metric.
-2. **System prompt via run flag** (`--system_instruction` + `--apply_chat_template`):
-   reproduces the original's real system role for chat models byte-for-byte. The
-   original's *base-model* path (`system + "\n\n" + user` concatenation) is **not**
-   reproduced — the paper evaluated no base models. `doc_to_text` intentionally carries
-   only the user prompt.
+2. **System prompt via each task's `description`** (delivered as a real system role under
+   `--apply_chat_template`): reproduces the original's system role for chat models
+   byte-for-byte. Under a base model (no chat template) `description` is prepended as text
+   — close to, but not byte-identical with, the original's `system + "\n\n" + user`
+   concat; the paper evaluated no base models, so that path is out of scope. `doc_to_text`
+   intentionally carries only the user prompt.
 3. **By-category as 7 independent leaves; overall from the unified task.** No group
    top-line aggregate is emitted (an unweighted macro-over-categories would not equal the
    paper's story-weighted overall).
@@ -165,8 +168,8 @@ which cannot appear inside a valid pipe table.
 
 - **Prompt parity — byte-identical.** All 895 Stage-1 **and** Stage-2 *user* prompts equal
   `build_extract_messages` / `build_label_messages` output exactly; `SYSTEM_EXTRACT` /
-  `SYSTEM_LABEL` equal `prompts_{extract,label}.PROMPT` exactly (and the configs round-trip
-  them byte-for-byte).
+  `SYSTEM_LABEL` equal `prompts_{extract,label}.PROMPT` exactly (and each task's
+  `description` field round-trips them byte-for-byte, incl. the Jinja pass).
 - **Stage-2 scorer parity — byte-identical (decisive).** Over all 895 stories,
   `process_results_label` reproduces the repo's `parse_label_rows` → `pair_indexed_rows` →
   per-dimension exact-match → `safe_mean` pipeline exactly (echo-gold → 1.0 on every
@@ -174,8 +177,9 @@ which cannot appear inside a valid pipe table.
   < 1e-12).
 - **Loader sanity.** 895 stories (ids 1–895); per-category 98/97/142/100/97/154/207;
   22,343 beliefs.
-- **Harness acceptance (Gate B).** All 10 tasks register; the 8 Stage-2 metrics compute;
-  the `--config` system-role path works end-to-end.
+- **Harness acceptance (Gate B).** All 9 tasks register (1 unified + 7 by-category + 1
+  extract); the 8 Stage-2 metrics compute; the `--apply_chat_template` system-role path
+  works end-to-end.
 
 Run env: `eval_env` (Python 3.13); `PYTHONIOENCODING=utf-8` on Windows.
 

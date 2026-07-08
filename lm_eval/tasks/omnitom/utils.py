@@ -30,8 +30,9 @@ ARCHITECTURE (see outputs/recon/omnitom-benchmark.md + this task's README):
   load(category=...)  reads benchmark_story_belief_labels.jsonl and (optionally)
          filters to one of the 7 ToMBench story categories for the by-category leaves.
   doc_to_text_label / doc_to_text_extract  reconstruct the stage's TELeR-L3 *user*
-         prompt byte-for-byte (the SYSTEM prompt is delivered as a real system role
-         via --system_instruction + --apply_chat_template; see the README).
+         prompt byte-for-byte (the SYSTEM prompt lives in each task's `description`
+         field and is delivered as a real system role under --apply_chat_template; see
+         the README).
   process_results_label   parses the model's label table and emits 8 per-story
          scalars (overall_acc + acc_<dim> x7); each YAML metric means them over
          stories (== the repo's safe_mean-over-stories == macro over stories).
@@ -376,8 +377,10 @@ def belief_table_pipe(beliefs):
 
 # ---------------------------------------------------------------------------
 # Prompt text vendored verbatim from prompts_extract.py / prompts_label.py.
-# doc_to_text emits the USER prompt only; the SYSTEM prompt below is delivered as a
-# real system role via --system_instruction (see eval_config_*.yaml / README).
+# doc_to_text emits the USER prompt only; the SYSTEM prompt below is copied verbatim into
+# each task YAML's `description` field, which lm-eval delivers as a real system role under
+# --apply_chat_template (see the YAML comments / README). These constants remain the
+# single source of truth checked against the YAML by the parity test.
 # ---------------------------------------------------------------------------
 
 # prompts_extract.PROMPT (Stage-1 system) -- exposed for the parity test + config.
@@ -517,7 +520,7 @@ def load(category=None, **kwargs):
 
 
 # ---------------------------------------------------------------------------
-# PROMPT FUNCTIONS (user prompt only; system prompt via --system_instruction)
+# PROMPT FUNCTIONS (user prompt only; system prompt via each task's `description`)
 # ---------------------------------------------------------------------------
 
 def doc_to_text_label(doc):
