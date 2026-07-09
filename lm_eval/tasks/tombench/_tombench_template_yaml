@@ -1,0 +1,73 @@
+# Shared config for every ToMBench task. Per-leaf: `task`, `description` (the verbatim
+# system prompt), `dataset_kwargs` (language / try_times / fix_gold_typo) and the FULL
+# `generation_kwargs` block -- `include:` does not deep-merge nested mappings.
+custom_dataset: !function utils.load
+test_split: train
+output_type: generate_until
+# The loader renders the user prompt (paper Table 20) once per shuffled repeat.
+doc_to_text: "{{input_text}}"
+doc_to_target: "{{target}}"   # logging only; scoring lives in process_results
+process_results: !function utils.process_results
+# Every metric is a ToMBench headline number. `process_results` emits the same per-run
+# payload under all 57 names; each metric's custom aggregation majority-votes the 5
+# shuffled repeats and then reads its own cell out of the roll-up.
+metric_list:
+  - {metric: acc, aggregation: !function utils.agg_acc, higher_is_better: true}
+  - {metric: task_uot, aggregation: !function utils.agg_task_uot, higher_is_better: true}
+  - {metric: task_sit, aggregation: !function utils.agg_task_sit, higher_is_better: true}
+  - {metric: task_pst, aggregation: !function utils.agg_task_pst, higher_is_better: true}
+  - {metric: task_fbt, aggregation: !function utils.agg_task_fbt, higher_is_better: true}
+  - {metric: task_ast, aggregation: !function utils.agg_task_ast, higher_is_better: true}
+  - {metric: task_ht, aggregation: !function utils.agg_task_ht, higher_is_better: true}
+  - {metric: task_sst, aggregation: !function utils.agg_task_sst, higher_is_better: true}
+  - {metric: task_frt, aggregation: !function utils.agg_task_frt, higher_is_better: true}
+  - {metric: task_avg, aggregation: !function utils.agg_task_avg, higher_is_better: true}
+  - {metric: ability_emotion_typical_emotional_reactions, aggregation: !function utils.agg_ability_emotion_typical_emotional_reactions, higher_is_better: true}
+  - {metric: ability_emotion_atypical_emotional_reactions, aggregation: !function utils.agg_ability_emotion_atypical_emotional_reactions, higher_is_better: true}
+  - {metric: ability_emotion_discrepant_emotions, aggregation: !function utils.agg_ability_emotion_discrepant_emotions, higher_is_better: true}
+  - {metric: ability_emotion_mixed_emotions, aggregation: !function utils.agg_ability_emotion_mixed_emotions, higher_is_better: true}
+  - {metric: ability_emotion_hidden_emotions, aggregation: !function utils.agg_ability_emotion_hidden_emotions, higher_is_better: true}
+  - {metric: ability_emotion_moral_emotions, aggregation: !function utils.agg_ability_emotion_moral_emotions, higher_is_better: true}
+  - {metric: ability_emotion_emotion_regulation, aggregation: !function utils.agg_ability_emotion_emotion_regulation, higher_is_better: true}
+  - {metric: ability_desire_multiple_desires, aggregation: !function utils.agg_ability_desire_multiple_desires, higher_is_better: true}
+  - {metric: ability_desire_desires_influence_on_actions_emotions, aggregation: !function utils.agg_ability_desire_desires_influence_on_actions_emotions, higher_is_better: true}
+  - {metric: ability_desire_desire_action_contradiction, aggregation: !function utils.agg_ability_desire_desire_action_contradiction, higher_is_better: true}
+  - {metric: ability_desire_discrepant_desires, aggregation: !function utils.agg_ability_desire_discrepant_desires, higher_is_better: true}
+  - {metric: ability_intention_discrepant_intentions, aggregation: !function utils.agg_ability_intention_discrepant_intentions, higher_is_better: true}
+  - {metric: ability_intention_prediction_of_actions, aggregation: !function utils.agg_ability_intention_prediction_of_actions, higher_is_better: true}
+  - {metric: ability_intention_intentions_explanations, aggregation: !function utils.agg_ability_intention_intentions_explanations, higher_is_better: true}
+  - {metric: ability_intention_completion_of_failed_actions, aggregation: !function utils.agg_ability_intention_completion_of_failed_actions, higher_is_better: true}
+  - {metric: ability_knowledge_knowledge_pretend_play_links, aggregation: !function utils.agg_ability_knowledge_knowledge_pretend_play_links, higher_is_better: true}
+  - {metric: ability_knowledge_percepts_knowledge_links, aggregation: !function utils.agg_ability_knowledge_percepts_knowledge_links, higher_is_better: true}
+  - {metric: ability_knowledge_information_knowledge_links, aggregation: !function utils.agg_ability_knowledge_information_knowledge_links, higher_is_better: true}
+  - {metric: ability_knowledge_knowledge_attention_links, aggregation: !function utils.agg_ability_knowledge_knowledge_attention_links, higher_is_better: true}
+  - {metric: ability_belief_content_false_beliefs, aggregation: !function utils.agg_ability_belief_content_false_beliefs, higher_is_better: true}
+  - {metric: ability_belief_location_false_beliefs, aggregation: !function utils.agg_ability_belief_location_false_beliefs, higher_is_better: true}
+  - {metric: ability_belief_identity_false_beliefs, aggregation: !function utils.agg_ability_belief_identity_false_beliefs, higher_is_better: true}
+  - {metric: ability_belief_second_order_beliefs, aggregation: !function utils.agg_ability_belief_second_order_beliefs, higher_is_better: true}
+  - {metric: ability_belief_beliefs_based_action_emotions, aggregation: !function utils.agg_ability_belief_beliefs_based_action_emotions, higher_is_better: true}
+  - {metric: ability_belief_sequence_false_beliefs, aggregation: !function utils.agg_ability_belief_sequence_false_beliefs, higher_is_better: true}
+  - {metric: ability_non_literal_communication_irony_sarcasm, aggregation: !function utils.agg_ability_non_literal_communication_irony_sarcasm, higher_is_better: true}
+  - {metric: ability_non_literal_communication_egocentric_lies, aggregation: !function utils.agg_ability_non_literal_communication_egocentric_lies, higher_is_better: true}
+  - {metric: ability_non_literal_communication_white_lies, aggregation: !function utils.agg_ability_non_literal_communication_white_lies, higher_is_better: true}
+  - {metric: ability_non_literal_communication_involuntary_lies, aggregation: !function utils.agg_ability_non_literal_communication_involuntary_lies, higher_is_better: true}
+  - {metric: ability_non_literal_communication_humor, aggregation: !function utils.agg_ability_non_literal_communication_humor, higher_is_better: true}
+  - {metric: ability_non_literal_communication_faux_pas, aggregation: !function utils.agg_ability_non_literal_communication_faux_pas, higher_is_better: true}
+  - {metric: category_emotion, aggregation: !function utils.agg_category_emotion, higher_is_better: true}
+  - {metric: category_desire, aggregation: !function utils.agg_category_desire, higher_is_better: true}
+  - {metric: category_intention, aggregation: !function utils.agg_category_intention, higher_is_better: true}
+  - {metric: category_knowledge, aggregation: !function utils.agg_category_knowledge, higher_is_better: true}
+  - {metric: category_belief, aggregation: !function utils.agg_category_belief, higher_is_better: true}
+  - {metric: category_non_literal_communication, aggregation: !function utils.agg_category_non_literal_communication, higher_is_better: true}
+  - {metric: ability_avg, aggregation: !function utils.agg_ability_avg, higher_is_better: true}
+  - {metric: coherent_uot, aggregation: !function utils.agg_coherent_uot, higher_is_better: true}
+  - {metric: coherent_sit, aggregation: !function utils.agg_coherent_sit, higher_is_better: true}
+  - {metric: coherent_pst, aggregation: !function utils.agg_coherent_pst, higher_is_better: true}
+  - {metric: coherent_fbt, aggregation: !function utils.agg_coherent_fbt, higher_is_better: true}
+  - {metric: coherent_ast, aggregation: !function utils.agg_coherent_ast, higher_is_better: true}
+  - {metric: coherent_ht, aggregation: !function utils.agg_coherent_ht, higher_is_better: true}
+  - {metric: coherent_sst, aggregation: !function utils.agg_coherent_sst, higher_is_better: true}
+  - {metric: coherent_frt, aggregation: !function utils.agg_coherent_frt, higher_is_better: true}
+  - {metric: coherent_avg, aggregation: !function utils.agg_coherent_avg, higher_is_better: true}
+metadata:
+  version: 0
