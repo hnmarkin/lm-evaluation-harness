@@ -5,16 +5,30 @@ description: "You are a helpful assistant."
 doc_to_text: !function utils.doc_to_text_vanilla
 doc_to_target: answerKey
 process_results: !function utils.process_results_vanilla
+# No "\n\n" stop, and max_gen_toks sized well past the paper's own 20: reasoning-capable chat
+# models think before answering even under "Respond with just (A) or (B)". On Qwen/Qwen3-1.7B,
+# tokens to `</think>` peak at 1308 (largest seen across all 3 families and all runs), and a 512
+# budget truncates 15.8% of generations mid-think -- which the extractor then silently grades as
+# "A". 2048 gives ~1.6x headroom over that maximum. This DOES affect scores; see README
+# deviation 4.
 generation_kwargs:
   until:
     - "</s>"
     - "<|im_end|>"
   do_sample: false
   temperature: 0.0
-  max_gen_toks: 512
+  max_gen_toks: 2048
 metric_list:
   - metric: acc
     aggregation: mean
     higher_is_better: true
+  # Repo-side diagnostic (basic_stats), not a paper number.
+  - metric: na_frac
+    aggregation: mean
+    higher_is_better: false
+  # Adapter-only tripwire for the truncation failure above. Should be 0.0 on a real run.
+  - metric: truncated_think_frac
+    aggregation: mean
+    higher_is_better: false
 metadata:
-  version: 0
+  version: 1

@@ -1,6 +1,0 @@
-include: _bigtom_1shot_cot_template_yaml
-task: bigtom_1shot_cot_forward_action_0_false_control
-dataset_kwargs:
-  variable: forward_action
-  init_belief: 0
-  condition: false_control

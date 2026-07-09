@@ -215,6 +215,30 @@ _FORWARD_KEYS = {
     "forward_action": ("Action Question", ("Action Answer Aware", "Action Answer not Aware")),
 }
 
+_CORE_VARIABLES = ("forward_belief", "forward_action", "backward_belief")
+_CONDITIONS = ("true_belief", "false_belief", "true_control", "false_control")
+
+_PAIR_KIND_TO_CONDITIONS = {
+    "belief": ("true_belief", "false_belief"),
+    "control": ("true_control", "false_control"),
+}
+
+
+def _pair_kind_for_condition(condition):
+    if condition in ("true_belief", "false_belief"):
+        return "belief"
+    if condition in ("true_control", "false_control"):
+        return "control"
+    raise ValueError(f"unsupported condition {condition!r}")
+
+
+def _pair_side_for_condition(condition):
+    if condition in ("true_belief", "true_control"):
+        return "true"
+    if condition in ("false_belief", "false_control"):
+        return "false"
+    raise ValueError(f"unsupported condition {condition!r}")
+
 
 def _expand_row(d, variable, init_belief, condition):
     if variable == "percept_to_belief":
@@ -251,19 +275,12 @@ def _expand_row(d, variable, init_belief, condition):
 # ---------------------------------------------------------------------------
 
 
-def load(variable=None, init_belief=None, condition=None, **kwargs):
-    """Materialize one (variable, init_belief, condition) cell (200 items) in memory.
-
-    Reproduces evaluate_conditions.py's per-cell deterministic answer-order shuffle:
-    that script does `random.seed(0)` once at import time and then
-    `random.shuffle(answers)` per row in sequential row order; since each condition
-    file is processed by its own process invocation, a fresh `random.Random(0)`
-    shuffled in row order reproduces it exactly for a full 200-row run.
-    """
+def _materialize_cell(variable, init_belief, condition):
     init_belief = int(init_belief)
     rows = _raw_rows()
     rng = random.Random(0)
     docs = []
+    pair_kind = _pair_kind_for_condition(condition)
     for idx, d in enumerate(rows):
         story, question, true_ans, wrong_ans = _expand_row(d, variable, init_belief, condition)
         pair = [true_ans, wrong_ans]
@@ -273,6 +290,11 @@ def load(variable=None, init_belief=None, condition=None, **kwargs):
         docs.append(
             {
                 "id": f"{variable}_{init_belief}_{condition}_{idx}",
+                "raw_idx": idx,
+                "variable": variable,
+                "init_belief": init_belief,
+                "condition": condition,
+                "pair_kind": pair_kind,
                 "story": story,
                 # Verbatim format from evaluate_conditions.py: "a)<opt>" / "b)<opt>",
                 # no space after the paren.
@@ -286,6 +308,67 @@ def load(variable=None, init_belief=None, condition=None, **kwargs):
                 "other_letter": other_letter,
             }
         )
+    return docs
+
+
+def load(variable=None, init_belief=None, condition=None, **kwargs):
+    """Materialize one (variable, init_belief, condition) cell (200 items) in memory.
+
+    Reproduces evaluate_conditions.py's per-cell deterministic answer-order shuffle:
+    that script does `random.seed(0)` once at import time and then
+    `random.shuffle(answers)` per row in sequential row order; since each condition
+    file is processed by its own process invocation, a fresh `random.Random(0)`
+    shuffled in row order reproduces it exactly for a full 200-row run.
+    """
+    docs = _materialize_cell(variable, init_belief, condition)
+    return {"train": datasets.Dataset.from_list(docs)}
+
+
+def load_paired(variable=None, init_belief=None, pair_kind=None, **kwargs):
+    """Materialize a paired true/false belief or control cell for `tb_fb_acc`.
+
+    The original paper's `TB & FB` contingency is a cross-item metric: a false-side
+    item is credited only when the raw-row-matched true-side item is also correct.
+    lm-eval cannot compute that from separate leaves, so paired leaves contain both
+    sides with stable `raw_idx` metadata and aggregate them inside one task.
+    """
+    if pair_kind not in _PAIR_KIND_TO_CONDITIONS:
+        raise ValueError(f"unsupported pair_kind {pair_kind!r}")
+
+    true_condition, false_condition = _PAIR_KIND_TO_CONDITIONS[pair_kind]
+    true_docs = _materialize_cell(variable, init_belief, true_condition)
+    false_docs = _materialize_cell(variable, init_belief, false_condition)
+    if len(true_docs) != len(false_docs):
+        raise ValueError(
+            f"paired cells differ in length: {true_condition}={len(true_docs)}, "
+            f"{false_condition}={len(false_docs)}"
+        )
+
+    docs = []
+    for true_doc, false_doc in zip(true_docs, false_docs, strict=True):
+        if true_doc["raw_idx"] != false_doc["raw_idx"]:
+            raise ValueError(
+                f"paired cells are not aligned at raw_idx {true_doc['raw_idx']} / "
+                f"{false_doc['raw_idx']}"
+            )
+        docs.extend([true_doc, false_doc])
+    return {"train": datasets.Dataset.from_list(docs)}
+
+
+def load_variable(variable=None, **kwargs):
+    """Materialize all core BigToM cells for one variable.
+
+    This keeps the registered task surface small (`variant x variable`) while
+    preserving the old per-cell granularity through metric names emitted from
+    `process_results_variable_*`.
+    """
+    if variable not in _CORE_VARIABLES:
+        raise ValueError(f"unsupported core variable {variable!r}")
+
+    docs = []
+    for init_belief in (0, 1):
+        for condition in _CONDITIONS:
+            docs.extend(_materialize_cell(variable, init_belief, condition))
     return {"train": datasets.Dataset.from_list(docs)}
 
 
@@ -356,10 +439,17 @@ def _to_metrics(grade):
     return {"acc": 1.0 if grade == "correct" else 0.0, "error_rate": 1.0 if grade == "error" else 0.0}
 
 
-def process_results_vanilla(doc, results):
+def _cell_suffix(doc):
+    return f"{int(doc['init_belief'])}_{doc['condition']}"
+
+
+def _score_vanilla(doc, results):
     text = _strip_thinking(results[0])
-    grade = _grade(text, doc["gold_letter"], doc["other_letter"], doc["true_text"], doc["wrong_text"])
-    return _to_metrics(grade)
+    return _grade(text, doc["gold_letter"], doc["other_letter"], doc["true_text"], doc["wrong_text"])
+
+
+def process_results_vanilla(doc, results):
+    return _to_metrics(_score_vanilla(doc, results))
 
 
 def _parse_chat_response(response):
@@ -371,7 +461,73 @@ def _parse_chat_response(response):
     return response[answer_idx + 8:].strip()
 
 
-def process_results_cot(doc, results):
+def _score_cot(doc, results):
     parsed = _parse_chat_response(_strip_thinking(results[0]))
-    grade = _grade(parsed, doc["gold_letter"], doc["other_letter"], doc["true_text"], doc["wrong_text"])
-    return _to_metrics(grade)
+    return _grade(parsed, doc["gold_letter"], doc["other_letter"], doc["true_text"], doc["wrong_text"])
+
+
+def process_results_cot(doc, results):
+    return _to_metrics(_score_cot(doc, results))
+
+
+def _tb_fb_payload(doc, grade):
+    return {
+        "raw_idx": int(doc["raw_idx"]),
+        "variable": doc["variable"],
+        "init_belief": int(doc["init_belief"]),
+        "pair_kind": doc["pair_kind"],
+        "condition": doc["condition"],
+        "acc": 1.0 if grade == "correct" else 0.0,
+    }
+
+
+def _to_paired_metrics(doc, grade):
+    metrics = _to_metrics(grade)
+    metrics["tb_fb_acc"] = _tb_fb_payload(doc, grade)
+    return metrics
+
+
+def process_results_paired_vanilla(doc, results):
+    return _to_paired_metrics(doc, _score_vanilla(doc, results))
+
+
+def process_results_paired_cot(doc, results):
+    return _to_paired_metrics(doc, _score_cot(doc, results))
+
+
+def _to_variable_metrics(doc, grade):
+    base = _to_metrics(grade)
+    suffix = _cell_suffix(doc)
+    base[f"acc_{suffix}"] = base["acc"]
+    base[f"error_rate_{suffix}"] = base["error_rate"]
+    base[f"tb_fb_acc_{int(doc['init_belief'])}_{doc['pair_kind']}"] = _tb_fb_payload(doc, grade)
+    return base
+
+
+def process_results_variable_vanilla(doc, results):
+    return _to_variable_metrics(doc, _score_vanilla(doc, results))
+
+
+def process_results_variable_cot(doc, results):
+    return _to_variable_metrics(doc, _score_cot(doc, results))
+
+
+def agg_tb_fb_acc(items):
+    """Aggregate BigToM's paper metric: P(true-side correct AND false-side correct)."""
+    pairs = {}
+    for item in items:
+        key = (
+            item["variable"],
+            int(item["init_belief"]),
+            item["pair_kind"],
+            int(item["raw_idx"]),
+        )
+        side = _pair_side_for_condition(item["condition"])
+        pairs.setdefault(key, {})[side] = float(item["acc"])
+
+    scores = [
+        1.0 if pair["true"] == 1.0 and pair["false"] == 1.0 else 0.0
+        for pair in pairs.values()
+        if "true" in pair and "false" in pair
+    ]
+    return sum(scores) / len(scores) if scores else float("nan")

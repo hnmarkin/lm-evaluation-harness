@@ -15,6 +15,12 @@ faithfulness-deviation list, in particular:
     released id ever ends in those suffixes (verified against the live HF dataset) and the
     published paper defines no such metric (verified against the full paper text: zero
     occurrences of "combo" or "conditioned") -- dead code in the source repo, not reproduced here.
+  - `basic_stats`'s other per-category output, `na_frac`, IS reproduced (same definition:
+    `predicted not in ['A', 'B']`). It is a repo-side diagnostic only: the paper reports accuracy
+    alone and never mentions it. Do not treat `na_frac` as a paper-comparable number.
+  - The paper DOES define one cross-item analysis -- Figure 3's first-failure distribution over
+    mental state -> behavior -> judgment for a shared story. It is not built here because it needs
+    an offline join of `--log_samples` across the three families. Deferred, not undefined.
 """
 
 import re
@@ -30,9 +36,14 @@ _LETTERS = ["A", "B", "C", "D", "E"]
 
 # ---------------------------------------------------------------------------
 # PROMPT-FN -- vendored port of inference/utils.py:220-262 (`make_mcq`, `question_prompt`).
-# `extra_question`/`add_either_option`/`add_neither_option` are dropped: run_inference.py's
-# main() never passes them (all default off), so they are dead parameters for the released
-# protocol.
+# All three optional parameters are dropped, because run_inference.py's main() never passes them
+# and so none is reachable from the released protocol. Two of them, `add_either_option` and
+# `add_neither_option`, are genuinely unused: the paper never adds a third "either"/"neither"
+# choice anywhere. `extra_question` is different -- it is the mechanism behind the paper's
+# "Patching mental state inference in the prompt (MS remind)" intervention (Appendix K.1, scored
+# in main-body Table 3, section 5.3). Reproducing that column would mean writing new inference
+# code rather than porting run_inference.py, so it stays out of scope here -- but it is not dead
+# code, and the `prompt_question_text` slot below is where it would go.
 # ---------------------------------------------------------------------------
 
 
@@ -113,12 +124,36 @@ def _extract_predicted_letter(text):
     return text
 
 
+def _truncated_think(generation):
+    """Diagnostic tripwire, NOT part of the original protocol.
+
+    `_strip_thinking` is a silent no-op when `</think>` never appears, so a reasoning trace that
+    exhausts `max_gen_toks` mid-`<think>` gets fed to `_extract_predicted_letter` whole. That
+    extractor's first tier scans `(A)`->`(B)`->`(C)`->`(D)` and returns the LOWEST letter present
+    anywhere in the text, so a truncated ramble almost always scores as a confident "A". Neither
+    `acc` nor `na_frac` can see this. A non-zero `truncated_think_frac` means "raise
+    `max_gen_toks`", not "the model is bad".
+
+    Assumes the model emits its own opening `<think>` (Qwen3, DeepSeek-R1 chat templates do). A
+    template that pre-fills `<think>` into the prompt would leave neither tag in the generation
+    and this would read 0.0.
+    """
+    return 1.0 if ("<think>" in generation and "</think>" not in generation) else 0.0
+
+
 def _score(doc, generation, answer_prefix):
     text = _strip_thinking(generation)
     text = _strip_answer_prefix(text, answer_prefix)
     pred = _extract_predicted_letter(text)
     gold = str(doc["answerKey"]).strip().upper()
-    return {"acc": 1.0 if pred == gold else 0.0}
+    return {
+        # `acc` is byte-faithful to process_answer; the two metrics below are additive only.
+        "acc": 1.0 if pred == gold else 0.0,
+        # basic_stats (inference/utils.py:160): `na = 1 if predicted not in ['A', 'B'] else 0`,
+        # so an extracted "C"/"D" or an unparseable raw-text fallback both count as no-answer.
+        "na_frac": 0.0 if pred in ("A", "B") else 1.0,
+        "truncated_think_frac": _truncated_think(generation),
+    }
 
 
 def process_results_vanilla(doc, results):

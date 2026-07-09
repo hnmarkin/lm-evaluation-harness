@@ -1,6 +1,0 @@
-include: _bigtom_1shot_cot_template_yaml
-task: bigtom_1shot_cot_forward_action_1_false_belief
-dataset_kwargs:
-  variable: forward_action
-  init_belief: 1
-  condition: false_belief
