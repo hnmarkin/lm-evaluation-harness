@@ -1,6 +1,0 @@
-include: _bigtom_1shot_template_yaml
-task: bigtom_1shot_backward_belief_1_true_control
-dataset_kwargs:
-  variable: backward_belief
-  init_belief: 1
-  condition: true_control

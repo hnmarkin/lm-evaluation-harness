@@ -1,0 +1,4 @@
+include: _bigtom_0shot_cot_template_yaml
+task: bigtom_0shot_cot_forward_action
+dataset_kwargs:
+  variable: forward_action
