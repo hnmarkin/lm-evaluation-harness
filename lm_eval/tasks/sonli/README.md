@@ -41,6 +41,26 @@ which sends each prompt as one user message. Omit it only when intentionally
 emulating the source local-vLLM path, which passes raw prompt text. Do not
 compare runs unless this serialization choice is held fixed and reported.
 
+### On the cluster (recommended)
+
+Two `sbatch` commands, nothing to hand-edit in between:
+
+```bash
+sbatch slurm/lm_eval_task.sbatch sonli_supporting sonli_opposing   # Stage 1
+sbatch slurm/run_sonli_judge_pipeline.sbatch                       # Stage 2+3
+```
+
+`run_sonli_judge_pipeline.sbatch` auto-discovers the newest Stage-1 sample
+logs (whether Stage 1 ran as one combined job or two separate ones), runs
+`offline_score.py prepare` for you, exports `SONLI_JUDGE_DATA`, runs
+`sonli_judge`, and writes a flat `final_scores.json` summary next to
+lm-eval's own `results_*.json`. See that script's header for override env
+vars (pointing at specific sample logs, batch size, `LM_EVAL_LIMIT` smoke
+tests). The manual steps below are what it's doing under the hood — useful
+if you're not on the cluster, or want to run a stage by hand.
+
+### Manual / by hand
+
 Run the stage-1 explanation prompts:
 
 ```bash
