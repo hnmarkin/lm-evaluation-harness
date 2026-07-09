@@ -11,7 +11,7 @@ description: |-
   (3) Again, you must first output the results of step-by-step reasoning, and finally output the most likely answer index. You should not directly output the answer index.
 dataset_kwargs:
   language: en
-  try_times: 5          # paper Sec. 4.1: shuffle option order 5x, majority-vote
+  try_times: 1          # paper Sec. 4.1: shuffle option order 5x, majority-vote
   fix_gold_typo: true
 generation_kwargs:
   # run_huggingface.py: {"max_length": 4096, "do_sample": False, "top_k": 1} -- greedy, no

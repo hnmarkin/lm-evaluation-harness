@@ -11,7 +11,7 @@ description: |-
   (3) Please only output the most likely answer index based on the given information, and do not output any other content.
 dataset_kwargs:
   language: en
-  try_times: 5          # paper Sec. 4.1: shuffle option order 5x, majority-vote
+  try_times: 1          # paper Sec. 4.1: shuffle option order 5x, majority-vote
   fix_gold_typo: true
 generation_kwargs:
   # run_huggingface.py: {"max_length": 4096, "do_sample": False, "top_k": 1} -- greedy, no
