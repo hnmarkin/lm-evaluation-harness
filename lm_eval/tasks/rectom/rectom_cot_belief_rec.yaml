@@ -1,0 +1,6 @@
+include: _rectom_cot_template_yaml
+task: rectom_cot_belief_rec
+tag: [theory_of_mind, rectom_cot]
+dataset_kwargs:
+  task_id: belief_rec
+

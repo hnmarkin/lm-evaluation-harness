@@ -1,0 +1,22 @@
+group: rectom
+tag: [theory_of_mind]
+task:
+  - rectom_fine_intent_rec
+  - rectom_coarse_intent_rec
+  - rectom_belief_rec
+  - rectom_fine_intent_seeker
+  - rectom_coarse_intent_seeker
+  - rectom_desire_seeker
+  - rectom_prediction_rec
+  - rectom_judgement_rec
+  - rectom_prediction_seeker
+  - rectom_judgement_seeker
+# Convenience macro-mean across the 10 paper columns. RecToM reports per-column
+# accuracy, not this aggregate.
+aggregate_metric_list:
+  - metric: acc
+    aggregation: mean
+    weight_by_size: false
+metadata:
+  version: 0
+
