@@ -1,6 +1,0 @@
-include: _rectom_template_yaml
-task: rectom_prediction_seeker
-tag: [theory_of_mind, rectom]
-dataset_kwargs:
-  task_id: prediction_seeker
-

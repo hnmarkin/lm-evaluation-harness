@@ -13,20 +13,7 @@ from pathlib import Path
 import datasets
 
 
-_TASK_ORDER = [
-    "fine_intent_rec",
-    "coarse_intent_rec",
-    "belief_rec",
-    "fine_intent_seeker",
-    "coarse_intent_seeker",
-    "desire_seeker",
-    "prediction_rec",
-    "judgement_rec",
-    "prediction_seeker",
-    "judgement_seeker",
-]
-
-_TASKS = {
+_SOURCE_SPECS = {
     "fine_intent_rec": {
         "file": "1_intent_rec.json",
         "choice_key": "choice",
@@ -34,6 +21,7 @@ _TASKS = {
         "option_count": 10,
         "multi_label": True,
         "label": "Fine Intention (Rec)",
+        "role": "rec",
     },
     "coarse_intent_rec": {
         "file": "1_coarse_intent_rec.json",
@@ -42,6 +30,7 @@ _TASKS = {
         "option_count": 5,
         "multi_label": True,
         "label": "Coarse Intention (Rec)",
+        "role": "rec",
     },
     "belief_rec": {
         "file": "8_belief_rec_2_com.json",
@@ -50,6 +39,7 @@ _TASKS = {
         "option_count": 7,
         "multi_label": False,
         "label": "Belief (Rec)",
+        "role": "rec",
     },
     "fine_intent_seeker": {
         "file": "2_intent_seeker.json",
@@ -58,6 +48,7 @@ _TASKS = {
         "option_count": 16,
         "multi_label": True,
         "label": "Fine Intention (Seek)",
+        "role": "seeker",
     },
     "coarse_intent_seeker": {
         "file": "2_coarse_intent_seeker.json",
@@ -66,6 +57,7 @@ _TASKS = {
         "option_count": 4,
         "multi_label": True,
         "label": "Coarse Intention (Seek)",
+        "role": "seeker",
     },
     "desire_seeker": {
         "file": "7_desire_seeker_com.json",
@@ -74,6 +66,7 @@ _TASKS = {
         "option_count": 2,
         "multi_label": False,
         "label": "Desire (Seek)",
+        "role": "seeker",
     },
     "prediction_rec": {
         "file": "3_pred_rec.json",
@@ -82,6 +75,7 @@ _TASKS = {
         "option_count": 5,
         "multi_label": True,
         "label": "Prediction (Rec)",
+        "role": "rec",
     },
     "judgement_rec": {
         "file": "5_reverse_judge_rec.json",
@@ -90,6 +84,7 @@ _TASKS = {
         "option_count": 2,
         "multi_label": False,
         "label": "Judgement (Rec)",
+        "role": "rec",
     },
     "prediction_seeker": {
         "file": "4_pred_seeker.json",
@@ -98,6 +93,7 @@ _TASKS = {
         "option_count": 4,
         "multi_label": True,
         "label": "Prediction (Seek)",
+        "role": "seeker",
     },
     "judgement_seeker": {
         "file": "6_judge_seeker.json",
@@ -106,7 +102,26 @@ _TASKS = {
         "option_count": 2,
         "multi_label": False,
         "label": "Judgement (Seek)",
+        "role": "seeker",
     },
+}
+
+_TASK_ORDER = [
+    "coarse_intent",
+    "belief",
+    "desire",
+    "fine_intent",
+    "judgement",
+    "prediction",
+]
+
+_TASKS = {
+    "coarse_intent": ["coarse_intent_rec", "coarse_intent_seeker"],
+    "belief": ["belief_rec"],
+    "desire": ["desire_seeker"],
+    "fine_intent": ["fine_intent_rec", "fine_intent_seeker"],
+    "judgement": ["judgement_rec", "judgement_seeker"],
+    "prediction": ["prediction_rec", "prediction_seeker"],
 }
 
 _COT_SYSTEM = (
@@ -196,7 +211,9 @@ def _normalise_doc(row, task_id, spec):
         "gold_letters": gold,
         "answer": "".join(gold),
         "task_id": task_id,
+        "source_task_id": task_id,
         "task_label": spec["label"],
+        "role": spec["role"],
         "multi_label": bool(spec["multi_label"]),
     }
 
@@ -206,8 +223,23 @@ def load(task_id=None, **kwargs):
     if task_id not in _TASKS:
         known = ", ".join(_TASK_ORDER)
         raise ValueError(f"Unknown RecToM task_id {task_id!r}; expected one of: {known}")
-    spec = _TASKS[task_id]
-    docs = [_normalise_doc(row, task_id, spec) for row in _read_json(spec["file"])]
+    source_docs = []
+    for source_task_id in _TASKS[task_id]:
+        spec = _SOURCE_SPECS[source_task_id]
+        source_docs.append(
+            [
+                _normalise_doc(row, source_task_id, spec)
+                for row in _read_json(spec["file"])
+            ]
+        )
+
+    docs = []
+    for i in range(max(len(items) for items in source_docs)):
+        docs.extend(
+            items[i]
+            for items in source_docs
+            if i < len(items)
+        )
     return {"train": datasets.Dataset.from_list(docs)}
 
 
@@ -305,6 +337,12 @@ def _score(doc, pred):
     return {"acc": 1.0 if sorted(doc["gold_letters"]) == sorted(pred) else 0.0}
 
 
+def _score_by_role(doc, pred):
+    score = 1.0 if sorted(doc["gold_letters"]) == sorted(pred) else 0.0
+    payload = {"role": doc["role"], "score": score}
+    return {"acc": score, "acc_rec": payload, "acc_seeker": payload}
+
+
 def process_results(doc, results):
     pred = _extract_direct(results[0], set(doc["letters"]))
     return _score(doc, pred)
@@ -314,3 +352,27 @@ def process_results_cot(doc, results):
     pred = _extract_cot(results[0], doc["answer_range"])
     return _score(doc, pred)
 
+
+def process_results_by_role(doc, results):
+    pred = _extract_direct(results[0], set(doc["letters"]))
+    return _score_by_role(doc, pred)
+
+
+def process_results_cot_by_role(doc, results):
+    pred = _extract_cot(results[0], doc["answer_range"])
+    return _score_by_role(doc, pred)
+
+
+def _agg_role(items, role):
+    scores = [float(item["score"]) for item in items if item["role"] == role]
+    if not scores:
+        return float("nan")
+    return sum(scores) / len(scores)
+
+
+def agg_acc_rec(items):
+    return _agg_role(items, "rec")
+
+
+def agg_acc_seeker(items):
+    return _agg_role(items, "seeker")

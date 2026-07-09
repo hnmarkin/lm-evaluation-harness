@@ -18,24 +18,28 @@ This adapter defines two paper variants:
 - `rectom_cot`: CoT prompting with the official "Let's think step by step."
   cue and final-answer regex.
 
-Each group contains the 10 paper question families:
+Each group exposes 6 runnable task families covering the 10 paper columns:
 
-| task suffix | data file | n | options | answer type |
-|---|---:|---:|---:|---|
-| `fine_intent_rec` | `1_intent_rec.json` | 2205 | 10 | multiple |
-| `coarse_intent_rec` | `1_coarse_intent_rec.json` | 2205 | 5 | multiple |
-| `belief_rec` | `8_belief_rec_2_com.json` | 1762 | 7 | single |
-| `fine_intent_seeker` | `2_intent_seeker.json` | 2205 | 16 | multiple |
-| `coarse_intent_seeker` | `2_coarse_intent_seeker.json` | 2205 | 4 | multiple |
-| `desire_seeker` | `7_desire_seeker_com.json` | 1448 | 2 | single |
-| `prediction_rec` | `3_pred_rec.json` | 2098 | 5 | multiple |
-| `judgement_rec` | `5_reverse_judge_rec.json` | 2098 | 2 | single |
-| `prediction_seeker` | `4_pred_seeker.json` | 2149 | 4 | multiple |
-| `judgement_seeker` | `6_judge_seeker.json` | 2149 | 2 | single |
+| runnable task suffix | underlying paper columns | n | reported metrics |
+|---|---|---:|---|
+| `coarse_intent` | Coarse Intention (Rec), Coarse Intention (Seek) | 4410 | `acc`, `acc_rec`, `acc_seeker` |
+| `belief` | Belief (Rec) | 1762 | `acc` |
+| `desire` | Desire (Seek) | 1448 | `acc` |
+| `fine_intent` | Fine Intention (Rec), Fine Intention (Seek) | 4410 | `acc`, `acc_rec`, `acc_seeker` |
+| `judgement` | Judgement (Rec), Judgement (Seek) | 4247 | `acc`, `acc_rec`, `acc_seeker` |
+| `prediction` | Prediction (Rec), Prediction (Seek) | 4247 | `acc`, `acc_rec`, `acc_seeker` |
 
 The `rectom` and `rectom_cot` group rows include a convenience unweighted
-macro-mean over the 10 leaves. The paper reports the per-family accuracies, not
-that aggregate.
+macro-mean over the 6 runnable leaves. The paper reports per-column accuracies;
+for the four dual-role leaves, those columns are preserved as `acc_rec` and
+`acc_seeker`.
+
+Belief and desire are intentionally one-sided in RecToM. The paper defines the
+belief task as the **recommender's belief** about the seeker's attitude toward a
+movie, and the desire task as the **seeker's latent interest/intent** in the
+dialogue. The released data therefore contains `8_belief_rec_2_com.json` but no
+seeker-belief file, and `7_desire_seeker_com.json` but no recommender-desire
+file.
 
 ## Metrics
 
@@ -43,6 +47,8 @@ Each leaf reports:
 
 - `acc`: `1.0` iff the sorted predicted letter set exactly equals the sorted
   gold letter set, else `0.0`.
+- `acc_rec` / `acc_seeker`: role-specific exact set-match accuracies, reported
+  on the four dual-role merged leaves only.
 
 The vanilla extractor vendors the released scripts' non-CoT behavior: strip all
 non-letters, dedupe characters, and accept only uppercase letters in the valid
@@ -73,14 +79,14 @@ Smoke-test a small slice before a full run:
 
 ```bash
 PYTHONIOENCODING=utf-8 lm-eval run --model dummy \
-  --tasks rectom_fine_intent_rec,rectom_cot_fine_intent_rec \
+  --tasks rectom_fine_intent,rectom_cot_fine_intent \
   --include_path lm-evaluation-harness/lm_eval/tasks/rectom \
-  --limit 1 --batch_size 1
+  --limit 2 --batch_size 1
 ```
 
 `--limit` is for plumbing only; do not report limited-run numbers. Full RecToM
-runs should report the 10 per-family leaf scores. The group macro-mean is only
-a convenience roll-up.
+runs should report the 6 family leaves and the role-specific metrics on
+dual-role leaves. The group macro-mean is only a convenience roll-up.
 
 ## Faithfulness deviations
 
@@ -99,10 +105,12 @@ a convenience roll-up.
    valid configuration for every data file (for example, seeker fine intent has
    A-P options while the default validation range is narrower). The adapter
    derives the valid letter range from each data file and the paper's Table 1.
-4. **Ten paper columns, not twelve.** The dossier noted a possible coarse/fine
-   split inside the two fine-intent files. The paper and data support 10
-   reported families; `answer_coarse` inside `1_intent_rec.json` and
-   `2_intent_seeker.json` is analysis metadata, not an extra leaf.
+4. **Six runnable leaves, ten paper columns.** The paper reports 10 columns, but
+   four pairs differ only by Rec/Seeker role. To avoid excess task YAMLs, this
+   adapter merges those pairs into one runnable family while preserving role
+   splits as `acc_rec` and `acc_seeker`. `answer_coarse` inside
+   `1_intent_rec.json` and `2_intent_seeker.json` is analysis metadata, not an
+   extra leaf.
 5. **Harness stop strings.** The official API calls set no explicit stop
    sequence. The adapter includes only chat end-token stops (`</s>`,
    `<|im_end|>`) and intentionally does not stop on newlines, because CoT
@@ -113,8 +121,8 @@ a convenience roll-up.
 - Dataset counts and option cardinalities are from `benchmarks/RecToM/data/*.json`.
 - Prompt frames, extraction, temperature `0.1`, and `max_tokens=700` are from
   `benchmarks/RecToM/evaluate/*_ds_RecommenderToM.py`.
-- The 10 task families and direct/CoT experiment variants are verified against
-  the arXiv paper, especially Table 1 and Table 4.
+- The 10 paper columns, 6 runnable task families, and direct/CoT experiment
+  variants are verified against the arXiv paper, especially Table 1 and Table 4.
 
 ## Verification
 
@@ -125,6 +133,7 @@ a convenience roll-up.
   --include_path lm-evaluation-harness/lm_eval/tasks/rectom` found both groups
   and validated them.
 - `conda run -n eval_env lm-eval run --model dummy --tasks
-  rectom_fine_intent_rec,rectom_cot_fine_intent_rec --include_path
-  lm-evaluation-harness/lm_eval/tasks/rectom --limit 1 --batch_size 1`
-  built contexts, ran `generate_until`, and produced `acc` for both leaves.
+  rectom_fine_intent,rectom_cot_fine_intent --include_path
+  lm-evaluation-harness/lm_eval/tasks/rectom --limit 2 --batch_size 1`
+  built contexts, ran `generate_until`, and produced `acc`, `acc_rec`, and
+  `acc_seeker` for both merged dual-role leaves.
