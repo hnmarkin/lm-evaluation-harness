@@ -1,17 +1,15 @@
 group: rectom
 tag: [theory_of_mind]
 task:
-  - rectom_coarse_intent
-  - rectom_belief
-  - rectom_desire
-  - rectom_fine_intent
-  - rectom_judgement
-  - rectom_prediction
-# Convenience macro-mean across the 6 runnable families. RecToM reports the
-# underlying Rec/Seeker columns for the dual-role families, not this aggregate.
-aggregate_metric_list:
-  - metric: acc
-    aggregation: mean
-    weight_by_size: false
+  - rectom_fine_intent_rec
+  - rectom_coarse_intent_rec
+  - rectom_belief_rec
+  - rectom_fine_intent_seeker
+  - rectom_coarse_intent_seeker
+  - rectom_desire_seeker
+  - rectom_prediction_rec
+  - rectom_judgement_rec
+  - rectom_prediction_seeker
+  - rectom_judgement_seeker
 metadata:
   version: 0

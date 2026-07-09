@@ -1,6 +1,0 @@
-include: _rectom_roles_template_yaml
-task: rectom_coarse_intent
-tag: [theory_of_mind, rectom]
-dataset_kwargs:
-  task_id: coarse_intent
-

@@ -4,6 +4,12 @@ output_type: generate_until
 doc_to_text: !function utils.doc_to_text
 doc_to_target: "{{answer}}"
 process_results: !function utils.process_results
+repeats: 5
+filter_list:
+  - name: first_valid
+    filter:
+      - function: take_first_k
+        k: 5
 generation_kwargs:
   until:
     - "</s>"
@@ -17,4 +23,3 @@ metric_list:
     higher_is_better: true
 metadata:
   version: 0
-

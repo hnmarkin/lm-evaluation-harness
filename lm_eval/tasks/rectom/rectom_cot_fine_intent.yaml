@@ -1,6 +1,0 @@
-include: _rectom_cot_roles_template_yaml
-task: rectom_cot_fine_intent
-tag: [theory_of_mind, rectom_cot]
-dataset_kwargs:
-  task_id: fine_intent
-

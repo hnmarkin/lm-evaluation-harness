@@ -106,7 +106,9 @@ _SOURCE_SPECS = {
     },
 }
 
-_TASK_ORDER = [
+_SOURCE_TASK_ORDER = list(_SOURCE_SPECS)
+
+_FAMILY_ORDER = [
     "coarse_intent",
     "belief",
     "desire",
@@ -115,7 +117,7 @@ _TASK_ORDER = [
     "prediction",
 ]
 
-_TASKS = {
+_FAMILY_TASKS = {
     "coarse_intent": ["coarse_intent_rec", "coarse_intent_seeker"],
     "belief": ["belief_rec"],
     "desire": ["desire_seeker"],
@@ -219,12 +221,21 @@ def _normalise_doc(row, task_id, spec):
 
 
 def load(task_id=None, **kwargs):
-    """Load one RecToM paper question family."""
-    if task_id not in _TASKS:
-        known = ", ".join(_TASK_ORDER)
+    """Load one RecToM source metric column.
+
+    Legacy family ids are still accepted for local diagnostics, but the
+    registered canonical tasks use the ten source ids in _SOURCE_SPECS.
+    """
+    if task_id in _SOURCE_SPECS:
+        source_task_ids = [task_id]
+    elif task_id in _FAMILY_TASKS:
+        source_task_ids = _FAMILY_TASKS[task_id]
+    else:
+        known = ", ".join(_SOURCE_TASK_ORDER + _FAMILY_ORDER)
         raise ValueError(f"Unknown RecToM task_id {task_id!r}; expected one of: {known}")
+
     source_docs = []
-    for source_task_id in _TASKS[task_id]:
+    for source_task_id in source_task_ids:
         spec = _SOURCE_SPECS[source_task_id]
         source_docs.append(
             [
@@ -302,12 +313,33 @@ def doc_to_text_cot(doc):
     )
 
 
-def _extract_direct(response, valid_letters):
+def _response_candidates(results):
+    if not results:
+        return [""]
+    first = results[0]
+    if isinstance(first, (list, tuple)):
+        return [str(response) for response in first]
+    return [str(response) for response in results]
+
+
+def _parse_direct_candidate(response, valid_letters):
     cleaned = re.sub(r"[^A-Za-z]", "", response)
     candidates = sorted(set(cleaned))
     if any(candidate not in valid_letters for candidate in candidates):
-        return []
-    return candidates
+        return False, []
+    return True, candidates
+
+
+def _select_direct_prediction(results, valid_letters):
+    for response in _response_candidates(results):
+        valid, candidates = _parse_direct_candidate(response, valid_letters)
+        if valid:
+            return candidates
+    return []
+
+
+def _first_response(results):
+    return _response_candidates(results)[0]
 
 
 def _extract_cot(response, answer_range):
@@ -337,42 +369,11 @@ def _score(doc, pred):
     return {"acc": 1.0 if sorted(doc["gold_letters"]) == sorted(pred) else 0.0}
 
 
-def _score_by_role(doc, pred):
-    score = 1.0 if sorted(doc["gold_letters"]) == sorted(pred) else 0.0
-    payload = {"role": doc["role"], "score": score}
-    return {"acc": score, "acc_rec": payload, "acc_seeker": payload}
-
-
 def process_results(doc, results):
-    pred = _extract_direct(results[0], set(doc["letters"]))
+    pred = _select_direct_prediction(results, set(doc["letters"]))
     return _score(doc, pred)
 
 
 def process_results_cot(doc, results):
-    pred = _extract_cot(results[0], doc["answer_range"])
+    pred = _extract_cot(_first_response(results), doc["answer_range"])
     return _score(doc, pred)
-
-
-def process_results_by_role(doc, results):
-    pred = _extract_direct(results[0], set(doc["letters"]))
-    return _score_by_role(doc, pred)
-
-
-def process_results_cot_by_role(doc, results):
-    pred = _extract_cot(results[0], doc["answer_range"])
-    return _score_by_role(doc, pred)
-
-
-def _agg_role(items, role):
-    scores = [float(item["score"]) for item in items if item["role"] == role]
-    if not scores:
-        return float("nan")
-    return sum(scores) / len(scores)
-
-
-def agg_acc_rec(items):
-    return _agg_role(items, "rec")
-
-
-def agg_acc_seeker(items):
-    return _agg_role(items, "seeker")

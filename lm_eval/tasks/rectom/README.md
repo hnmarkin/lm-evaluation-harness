@@ -18,21 +18,22 @@ This adapter defines two paper variants:
 - `rectom_cot`: CoT prompting with the official "Let's think step by step."
   cue and final-answer regex.
 
-Each group exposes 6 runnable task families covering the 10 paper columns:
+Each group exposes the 10 source metric columns reported by the paper/code.
+Groups are only collections of leaf rows; they intentionally do not report a
+benchmark-wide aggregate because the released scripts do not compute one.
 
-| runnable task suffix | underlying paper columns | n | reported metrics |
-|---|---|---:|---|
-| `coarse_intent` | Coarse Intention (Rec), Coarse Intention (Seek) | 4410 | `acc`, `acc_rec`, `acc_seeker` |
-| `belief` | Belief (Rec) | 1762 | `acc` |
-| `desire` | Desire (Seek) | 1448 | `acc` |
-| `fine_intent` | Fine Intention (Rec), Fine Intention (Seek) | 4410 | `acc`, `acc_rec`, `acc_seeker` |
-| `judgement` | Judgement (Rec), Judgement (Seek) | 4247 | `acc`, `acc_rec`, `acc_seeker` |
-| `prediction` | Prediction (Rec), Prediction (Seek) | 4247 | `acc`, `acc_rec`, `acc_seeker` |
-
-The `rectom` and `rectom_cot` group rows include a convenience unweighted
-macro-mean over the 6 runnable leaves. The paper reports per-column accuracies;
-for the four dual-role leaves, those columns are preserved as `acc_rec` and
-`acc_seeker`.
+| runnable task suffix | paper/code column | source file | n |
+|---|---|---|---:|
+| `fine_intent_rec` | Fine Intention (Rec) | `1_intent_rec.json` | 2205 |
+| `coarse_intent_rec` | Coarse Intention (Rec) | `1_coarse_intent_rec.json` | 2205 |
+| `belief_rec` | Belief (Rec) | `8_belief_rec_2_com.json` | 1762 |
+| `fine_intent_seeker` | Fine Intention (Seek) | `2_intent_seeker.json` | 2205 |
+| `coarse_intent_seeker` | Coarse Intention (Seek) | `2_coarse_intent_seeker.json` | 2205 |
+| `desire_seeker` | Desire (Seek) | `7_desire_seeker_com.json` | 1448 |
+| `prediction_rec` | Prediction (Rec) | `3_pred_rec.json` | 2098 |
+| `judgement_rec` | Judgement (Rec) | `5_reverse_judge_rec.json` | 2098 |
+| `prediction_seeker` | Prediction (Seek) | `4_pred_seeker.json` | 2149 |
+| `judgement_seeker` | Judgement (Seek) | `6_judge_seeker.json` | 2149 |
 
 Belief and desire are intentionally one-sided in RecToM. The paper defines the
 belief task as the **recommender's belief** about the seeker's attitude toward a
@@ -43,17 +44,20 @@ file.
 
 ## Metrics
 
-Each leaf reports:
-
-- `acc`: `1.0` iff the sorted predicted letter set exactly equals the sorted
-  gold letter set, else `0.0`.
-- `acc_rec` / `acc_seeker`: role-specific exact set-match accuracies, reported
-  on the four dual-role merged leaves only.
+Each leaf reports `acc`: `1.0` iff the sorted predicted letter set exactly
+equals the sorted gold letter set, else `0.0`.
 
 The vanilla extractor vendors the released scripts' non-CoT behavior: strip all
-non-letters, dedupe characters, and accept only uppercase letters in the valid
-option range. The CoT extractor vendors the released regex for final answers
-after `answer is`, `answer:`, `the answer is`, or `\boxed{X}`.
+non-letters, dedupe characters, and accept only letters in the valid option
+range. Direct tasks use `repeats: 5` plus a `take_first_k` filter named
+`first_valid`; `process_results` scores the first repeated response whose parsed
+letter set contains no out-of-range letters. An empty parsed direct response is
+valid but wrong, matching the source loop's `all(...)` gate.
+
+The CoT extractor vendors the released regex for final answers after `answer
+is`, `answer:`, `the answer is`, or a final-answer lead followed by
+`\boxed{X}`. CoT no-match cases are scored wrong on the first response, matching
+the source scripts' sentinel path rather than retrying.
 
 ## Usage
 
@@ -61,15 +65,16 @@ after `answer is`, `answer:`, `the answer is`, or `\boxed{X}`.
 PYTHONIOENCODING=utf-8 lm-eval run --model hf \
   --model_args pretrained=<model> \
   --tasks rectom \
-  --include_path lm-evaluation-harness/lm_eval/tasks \
   --output_path outputs/rectom --log_samples
 
 PYTHONIOENCODING=utf-8 lm-eval run --model hf \
   --model_args pretrained=<model> \
   --tasks rectom_cot \
-  --include_path lm-evaluation-harness/lm_eval/tasks \
   --output_path outputs/rectom_cot --log_samples
 ```
+
+If your lm-eval entry point is not using this vendored checkout's task tree,
+also pass `--include_path lm-evaluation-harness/lm_eval/tasks`.
 
 For chat-tuned models, compare runs consistently with or without
 `--apply_chat_template`. Do not also pass `--system_instruction`; the official
@@ -79,14 +84,13 @@ Smoke-test a small slice before a full run:
 
 ```bash
 PYTHONIOENCODING=utf-8 lm-eval run --model dummy \
-  --tasks rectom_fine_intent,rectom_cot_fine_intent \
-  --include_path lm-evaluation-harness/lm_eval/tasks/rectom \
-  --limit 2 --batch_size 1
+  --tasks rectom_fine_intent_rec,rectom_coarse_intent_seeker,rectom_desire_seeker,rectom_cot_fine_intent_rec,rectom_cot_coarse_intent_seeker,rectom_cot_desire_seeker \
+  --limit 2 --batch_size 1 --log_samples --output_path outputs/rectom_smoke
 ```
 
 `--limit` is for plumbing only; do not report limited-run numbers. Full RecToM
-runs should report the 6 family leaves and the role-specific metrics on
-dual-role leaves. The group macro-mean is only a convenience roll-up.
+runs should report the 10 leaf task rows. The original code itself does not
+emit a benchmark-wide aggregate.
 
 ## Faithfulness deviations
 
@@ -96,21 +100,21 @@ dual-role leaves. The group macro-mean is only a convenience roll-up.
    CoT system prompts differ, so the adapter bakes the system instruction into
    the plain prompt. This matches the released fallback path and keeps the task
    self-contained.
-2. **No conditional retry loop.** The official scripts retry generation until
-   every parsed character is in the valid letter set. lm-eval cannot perform a
-   per-item generate-until-valid loop; invalid or over-verbose generations are
-   scored wrong on the first sample.
+2. **Bounded direct retry.** The official direct scripts retry until a valid
+   parsed candidate appears. lm-eval cannot perform an unbounded conditional
+   generate loop, so this adapter requests 5 sampled repeats and scores the
+   first source-valid candidate. If all 5 direct responses are invalid, the item
+   is scored wrong. Exact unbounded retry would require a separate offline/API
+   runner.
 3. **Released script toggles corrected to the paper/data.** The four Python
    scripts are comment-toggled templates, and the committed defaults are not a
    valid configuration for every data file (for example, seeker fine intent has
    A-P options while the default validation range is narrower). The adapter
    derives the valid letter range from each data file and the paper's Table 1.
-4. **Six runnable leaves, ten paper columns.** The paper reports 10 columns, but
-   four pairs differ only by Rec/Seeker role. To avoid excess task YAMLs, this
-   adapter merges those pairs into one runnable family while preserving role
-   splits as `acc_rec` and `acc_seeker`. `answer_coarse` inside
-   `1_intent_rec.json` and `2_intent_seeker.json` is analysis metadata, not an
-   extra leaf.
+4. **No benchmark-wide aggregate.** Earlier adapter drafts exposed six pooled
+   family leaves and a convenience macro-mean. The source scripts and paper
+   report the 10 source columns, so the canonical groups now expose those leaves
+   only.
 5. **Harness stop strings.** The official API calls set no explicit stop
    sequence. The adapter includes only chat end-token stops (`</s>`,
    `<|im_end|>`) and intentionally does not stop on newlines, because CoT
@@ -119,21 +123,22 @@ dual-role leaves. The group macro-mean is only a convenience roll-up.
 ## Provenance
 
 - Dataset counts and option cardinalities are from `benchmarks/RecToM/data/*.json`.
-- Prompt frames, extraction, temperature `0.1`, and `max_tokens=700` are from
-  `benchmarks/RecToM/evaluate/*_ds_RecommenderToM.py`.
-- The 10 paper columns, 6 runnable task families, and direct/CoT experiment
-  variants are verified against the arXiv paper, especially Table 1 and Table 4.
+- Prompt frames, extraction, temperature `0.1`, retry behavior, and
+  `max_tokens=700` are from `benchmarks/RecToM/evaluate/*_ds_RecommenderToM.py`.
+- The 10 paper columns and direct/CoT experiment variants are verified against
+  the arXiv paper, especially Table 1 and Table 4.
 
 ## Verification
 
-- Model-free loader/metric checks passed over all 20,524 docs per variant:
-  counts, valid gold letters, prompt rendering, all-correct synthetic generations,
-  and all-wrong synthetic generations.
+- Model-free loader/metric checks passed for the 10 source leaves: counts, valid
+  gold letters, direct retry selection, empty-output handling, all-invalid
+  direct repeats, and CoT no-match behavior.
 - `conda run -n eval_env lm-eval validate --tasks rectom,rectom_cot
   --include_path lm-evaluation-harness/lm_eval/tasks/rectom` found both groups
   and validated them.
 - `conda run -n eval_env lm-eval run --model dummy --tasks
-  rectom_fine_intent,rectom_cot_fine_intent --include_path
-  lm-evaluation-harness/lm_eval/tasks/rectom --limit 2 --batch_size 1`
-  built contexts, ran `generate_until`, and produced `acc`, `acc_rec`, and
-  `acc_seeker` for both merged dual-role leaves.
+  rectom_fine_intent_rec,rectom_coarse_intent_seeker,rectom_desire_seeker,rectom_cot_fine_intent_rec,rectom_cot_coarse_intent_seeker,rectom_cot_desire_seeker
+  --limit 2 --batch_size 1 --log_samples --output_path outputs/rectom_smoke`
+  built contexts, ran `generate_until`, produced `acc` for all six smoke leaves,
+  and logged 5 direct repeats under the `first_valid` filter while keeping CoT
+  single-shot under the default `none` filter.

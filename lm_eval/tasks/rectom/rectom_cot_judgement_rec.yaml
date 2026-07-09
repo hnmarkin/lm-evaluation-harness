@@ -1,0 +1,5 @@
+include: _rectom_cot_template_yaml
+task: rectom_cot_judgement_rec
+tag: [theory_of_mind]
+dataset_kwargs:
+  task_id: judgement_rec
