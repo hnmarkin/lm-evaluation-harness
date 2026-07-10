@@ -124,7 +124,7 @@ def check_taxonomy():
         shapes == EXPECTED_TASK_SHAPE,
         f"task question/story shape drifted: {shapes} != {EXPECTED_TASK_SHAPE}",
     )
-    print(f"[1/4] 31 abilities x exact Table-18 counts (sum {N_ITEMS}); 8 task shapes incl. story ids")
+    print(f"[1/5] 31 abilities x exact Table-18 counts (sum {N_ITEMS}); 8 task shapes incl. story ids")
 
 
 # --- 2. loader shape, arity gate, gold recovery -----------------------------
@@ -175,7 +175,7 @@ def check_loader():
         sum(1 for k in fixed if fixed[k] != raw[k]) == 1,
         "fix_gold_typo changed more than the one known row",
     )
-    print(f"[2/4] loader: {N_ITEMS}x5 docs/lang, reps 0-4, {N_TASK_ITEMS} task items, "
+    print(f"[2/5] loader: {N_ITEMS}x5 docs/lang, reps 0-4, {N_TASK_ITEMS} task items, "
           f"{N_TWO_CHOICE['en']} en / {N_TWO_CHOICE['zh']} zh two-choice, every gold de-mappable")
     print(f"      gold typo {GOLD_TYPO_ITEM}: 'A. ' -> 'A' (main) / 'A. ' (rawgold), 1 row affected")
 
@@ -186,11 +186,14 @@ def check_loader():
 def check_metrics():
     yaml_text = (HERE / "_tombench_template_yaml").read_text(encoding="utf-8")
     declared = re.findall(r"\{metric: ([A-Za-z0-9_]+),", yaml_text)
+    expected = list(U.METRIC_NAMES) + list(U.DIAGNOSTIC_METRICS)
     _fail(
-        declared == list(U.METRIC_NAMES),
-        "metric_list in _tombench_template_yaml != utils.METRIC_NAMES",
+        declared == expected,
+        f"metric_list in _tombench_template_yaml != METRIC_NAMES + DIAGNOSTIC_METRICS\n"
+        f"  only in yaml: {sorted(set(declared) - set(expected))}\n"
+        f"  only in utils: {sorted(set(expected) - set(declared))}",
     )
-    _fail(len(declared) == 57, f"{len(declared)} metrics, expected 57")
+    _fail(len(declared) == 61, f"{len(declared)} metrics, expected 57 + 4 diagnostics")
 
     ds = U.load(language="en", try_times=5)["train"]
     for label, want in (("all-correct", 1.0), ("all-wrong", 0.0)):
@@ -202,14 +205,69 @@ def check_metrics():
                 letter = inverse[doc["gold"]]
             else:
                 letter = inverse[next(c for c in inverse if c != doc["gold"])]
-            for name, payload in U.process_results(doc, [f"[[{letter}]]"]).items():
-                raw[name].append(payload)
+            result = U.process_results(doc, [f"[[{letter}]]"])
+            _fail(set(result) == set(expected), f"{label}: process_results keys != metric_list")
+            for name in U.METRIC_NAMES:
+                raw[name].append(result[name])
+            # A clean `[[X]]` answer must trip no tripwire, right or wrong.
+            for name in U.DIAGNOSTIC_METRICS:
+                _fail(result[name] == 0.0, f"{label}: {name} fired on a well-formed '[[{letter}]]'")
         # lm-eval hands each metric its own list object; mirror that exactly.
         _fail(len({id(v) for v in raw.values()}) == 57, "expected 57 distinct payload lists")
         got = {name: getattr(U, "agg_" + name)(raw[name]) for name in U.METRIC_NAMES}
         bad = {k: v for k, v in got.items() if v != want}
         _fail(not bad, f"{label}: metrics != {want}: {bad}")
-    print("[3/4] 57 metric names == metric_list; all-correct -> 1.0, all-wrong -> 0.0")
+    print("[3/5] 61 metric names == metric_list; all-correct -> 1.0, all-wrong -> 0.0, no tripwire fires")
+
+
+# --- 3b. tripwires ----------------------------------------------------------
+
+# (generation, parse_fallback, no_letter, demap_miss, truncated_think). `demap_miss` here is
+# driven by a 4-choice item, where every letter A-D de-maps to something; the two-choice case
+# is exercised separately below.
+DIAGNOSTIC_CASES = [
+    ("[[C]]", 0.0, 0.0, 0.0, 0.0),
+    ("[C]", 0.0, 0.0, 0.0, 0.0),
+    # No brackets: extract_answer falls back to its BACKWARDS scan and finds the trailing C.
+    ("The answer is C", 1.0, 0.0, 0.0, 0.0),
+    # The scan finds the 'A' in "Answer" and returns it. This is the vendored behavior, and it
+    # is exactly why parse_fallback_frac -- not no_letter_frac -- is the primary tripwire.
+    ("Answer: banana", 1.0, 0.0, 0.0, 0.0),
+    # No A-D character anywhere -> extract_answer returns its hardcoded default "A".
+    ("I cannot answer.", 1.0, 1.0, 0.0, 0.0),
+    ("", 1.0, 1.0, 0.0, 0.0),
+    ("<think>Let me work through", 1.0, 1.0, 0.0, 0.0),  # also truncated, set below
+    ("<think>x</think> [[A]]", 0.0, 0.0, 0.0, 0.0),
+]
+
+
+def check_diagnostics():
+    ds = U.load(language="en", try_times=1)["train"]
+    four = next(d for d in ds if sum(1 for v in json.loads(d["opt_map"]).values() if v) == 4)
+    two = next(d for d in ds if sum(1 for v in json.loads(d["opt_map"]).values() if v) == 2)
+
+    for text, fallback, no_letter, demap, _ in DIAGNOSTIC_CASES:
+        got = U.process_results(four, [text])
+        want_trunc = 1.0 if ("<think>" in text and "</think>" not in text) else 0.0
+        want = {
+            "parse_fallback_frac": fallback,
+            "no_letter_frac": no_letter,
+            "demap_miss_frac": demap,
+            "truncated_think_frac": want_trunc,
+        }
+        for name, value in want.items():
+            _fail(got[name] == value, f"{text!r}: {name} = {got[name]}, want {value}")
+
+    # The de-map miss: run_api.py hands two-choice items the full four-letter map, so a model
+    # answering C or D lands on "" and scores wrong rather than raising. Reproduced, and now
+    # visible.
+    letter_map = json.loads(two["opt_map"])
+    _fail(letter_map["C"] == "" and letter_map["D"] == "", "two-choice item has a C/D de-map?")
+    _fail(U.process_results(two, ["[[D]]"])["demap_miss_frac"] == 1.0, "demap_miss missed a C/D on a yes/no item")
+    _fail(U.process_results(two, ["[[A]]"])["demap_miss_frac"] == 0.0, "demap_miss fired on a valid A")
+    _fail(U.process_results(four, ["[[D]]"])["demap_miss_frac"] == 0.0, "demap_miss fired on a valid D")
+
+    print(f"[4/5] tripwires: {len(DIAGNOSTIC_CASES)} generation cases + two/four-choice de-map miss")
 
 
 # --- 4. the one zh/en arity disagreement ------------------------------------
@@ -238,13 +296,14 @@ def check_arity_disagreement():
         disagree == ["Strange Story Task#292"],
         f"zh/en arity disagreements changed: {disagree}",
     )
-    print("[4/4] exactly 1 zh/en arity disagreement (Strange Story Task#292); C/D always vanish together")
+    print("[5/5] exactly 1 zh/en arity disagreement (Strange Story Task#292); C/D always vanish together")
 
 
 def main():
     check_taxonomy()
     check_loader()
     check_metrics()
+    check_diagnostics()
     check_arity_disagreement()
     print("\nLOADER OK")
 

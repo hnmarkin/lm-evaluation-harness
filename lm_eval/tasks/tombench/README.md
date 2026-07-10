@@ -16,7 +16,7 @@ and 31 ATOMS abilities.
 | **output_type** | `generate_until` — the system prompt demands `[[X]]`, and `get_results.py` parses free text |
 | **decoding** | greedy (`do_sample: false`), mirroring `run_huggingface.py` |
 | **tasks** | `tombench_{zh,en}` and `tombench_{zh,en}_cot` (+ 4 `*_rawgold` parity variants) |
-| **metrics** | 57 custom metrics, each with its own `aggregation: !function` |
+| **metrics** | 57 custom metrics, each with its own `aggregation: !function`, + 4 mean-aggregated tripwires |
 
 ### Why one multi-metric task, and not a leaf MATRIX
 
@@ -53,6 +53,30 @@ Both AVG columns are **macro**, not micro. Checked against Table 2 (GPT-4-1106 z
 micro would give 78.5) and Table 3 (Emotion zh: `531/7 = 75.9` ✓; micro would give 78.8).
 
 Values are reported in `[0, 1]`; the paper's tables are the same numbers ×100.
+
+### The four tripwires (not paper numbers)
+
+`extract_answer` is vendored verbatim and **cannot fail**: its ladder ends in a backwards scan for any
+`A`/`B`/`C`/`D` character, then a hardcoded default of `"A"`. A truncated CoT, a refusal, or an empty
+generation therefore does not score 0 — it becomes a *real vote* on a roughly uniformly random
+canonical option. Worse, the 5-way majority vote then **hides** it: an item can absorb two garbage
+repeats out of five and still score correct. In a simulation with 20% of generations replaced by junk,
+`acc` stayed at **1.0000** while `parse_fallback_frac` read `0.2000`. `acc` alone cannot reveal this.
+
+| metric | fires when | means |
+|---|---|---|
+| `parse_fallback_frac` | no `[[X]]` and no `[X]` matched | the model never emitted the demanded format; the letter came from the backwards scan. **The primary tripwire.** |
+| `no_letter_frac` | no `A`–`D` character anywhere | `extract_answer` returned its hardcoded `"A"`; the answer is fabricated |
+| `demap_miss_frac` | the de-map returned `""` | the model answered `C`/`D` on a yes/no item (`run_api.py` gives two-choice items the full four-letter map) |
+| `truncated_think_frac` | `<think>` present, `</think>` absent | a reasoning model's trace was cut by `max_gen_toks` |
+
+Two caveats. **The denominator is generations** (`2,860 × try_times`), not the 2,860 voted items that
+`acc` and the other 56 metrics use — do not compare them directly. And `truncated_think_frac` only
+fires when the model emits its own opening `<think>`; a chat template that *prefills* it leaves neither
+tag in the completion, and you must watch `parse_fallback_frac` instead.
+
+A non-zero value means "raise `max_gen_toks`" or "this model is not answering", **not** "the model is
+bad". The 57 paper metrics are untouched by all of this.
 
 ---
 

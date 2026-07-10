@@ -446,12 +446,55 @@ METRIC_NAMES = (
 )
 assert len(METRIC_NAMES) == 57, len(METRIC_NAMES)
 
+# Tripwires. NOT paper numbers, and deliberately NOT in METRIC_NAMES (which drives the
+# payload emission and the 57-cell roll-up). Plain per-generation fractions, mean-aggregated.
+#
+# They exist because `extract_answer` is vendored verbatim and *cannot fail*: its ladder ends
+# in a backwards scan for any A/B/C/D character, then a hardcoded default of "A". So a
+# truncated CoT, a refusal, or an empty generation is not scored 0 -- it becomes a real vote
+# on a roughly uniformly random canonical option (~25% four-choice, ~50% two-choice), and
+# degrades the score toward chance invisibly. None of the 57 metrics can see that happen.
+#
+# Their denominator is GENERATIONS (2,860 x try_times), not the 2,860 voted items that `acc`
+# and the other 56 metrics are computed over. Do not compare them directly.
+DIAGNOSTIC_METRICS = (
+    "parse_fallback_frac",
+    "no_letter_frac",
+    "demap_miss_frac",
+    "truncated_think_frac",
+)
+
+
+def _diagnose(text, predicted):
+    """Per-generation tripwires. Mirrors `extract_answer`'s ladder exactly:
+
+      * it takes the fallback branch iff no ``[[X]]`` and no ``[X]`` matched. Testing ``[X]``
+        alone suffices -- ``"[[A]]"`` contains ``"[A]"`` as a substring.
+      * it returns its hardcoded ``"A"`` iff the backwards scan also found nothing, i.e. iff
+        no bare ``A``/``B``/``C``/``D`` character appears anywhere. That subsumes the bracket
+        test, so `no_letter` needs no `parse_fallback` conjunct.
+
+    `truncated_think_frac` only fires when the model emits its own opening ``<think>``. A chat
+    template that PREFILLS ``<think>`` leaves an unclosed trace with neither tag in the
+    completion, and this misses it -- watch `parse_fallback_frac` there instead.
+    """
+    bracketed = any(f"[{letter}]" in text for letter in "ABCD")
+    has_letter = any(letter in text for letter in "ABCD")
+    return {
+        "parse_fallback_frac": 0.0 if bracketed else 1.0,
+        "no_letter_frac": 0.0 if has_letter else 1.0,
+        "demap_miss_frac": 1.0 if predicted == "" else 0.0,
+        "truncated_think_frac": 1.0 if ("<think>" in text and "</think>" not in text) else 0.0,
+    }
+
 
 def process_results(doc, results):
     """EXTRACTOR: parse the letter, de-map it to the canonical letter. The vote itself is
-    cross-doc, so emit a payload under every metric name and let the aggregations do it."""
+    cross-doc, so emit a payload under every metric name and let the aggregations do it.
+    The tripwires are ordinary per-doc scalars and ride alongside."""
+    text = results[0]
     letter_map = json.loads(doc["opt_map"])
-    predicted = letter_map.get(extract_answer(results[0]), "")
+    predicted = letter_map.get(extract_answer(text), "")
     payload = {
         "item_id": doc["item_id"],
         "story_id": doc["story_id"],
@@ -461,7 +504,7 @@ def process_results(doc, results):
         "rep": doc["rep"],
         "pred": predicted,
     }
-    return {name: payload for name in METRIC_NAMES}
+    return {**{name: payload for name in METRIC_NAMES}, **_diagnose(text, predicted)}
 
 
 def _mean(values):
