@@ -4,4 +4,5 @@ task_alias: UnifiedToM Multi-Interaction direct
 tag: [theory_of_mind]
 dataset_kwargs:
   subset: multi_interaction
-
+metadata:
+  version: 1

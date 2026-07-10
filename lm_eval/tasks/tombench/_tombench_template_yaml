@@ -74,5 +74,14 @@ metric_list:
   - {metric: coherent_sst, aggregation: !function utils.agg_coherent_sst, higher_is_better: true}
   - {metric: coherent_frt, aggregation: !function utils.agg_coherent_frt, higher_is_better: true}
   - {metric: coherent_avg, aggregation: !function utils.agg_coherent_avg, higher_is_better: true}
+  # Tripwires -- NOT paper numbers. Plain per-GENERATION fractions (denominator 2,860 x
+  # try_times), not per-voted-item like the 57 above. `extract_answer` is vendored verbatim and
+  # cannot fail: a truncated CoT or a refusal silently becomes a random vote. These make that
+  # visible. A non-zero value means "raise max_gen_toks" / "the model is not answering", not
+  # "the model is bad". See utils._diagnose.
+  - {metric: parse_fallback_frac, aggregation: mean, higher_is_better: false}
+  - {metric: no_letter_frac, aggregation: mean, higher_is_better: false}
+  - {metric: demap_miss_frac, aggregation: mean, higher_is_better: false}
+  - {metric: truncated_think_frac, aggregation: mean, higher_is_better: false}
 metadata:
   version: 0
