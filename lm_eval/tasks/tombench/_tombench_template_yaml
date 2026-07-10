@@ -1,6 +1,11 @@
 # Shared config for every ToMBench task. Per-leaf: `task`, `description` (the verbatim
 # system prompt), `dataset_kwargs` (language / try_times / fix_gold_typo) and the FULL
 # `generation_kwargs` block -- `include:` does not deep-merge nested mappings.
+#
+# `class:` routes every task through ToMBenchTask, which hard-fails when
+# `--apply_chat_template` is absent -- without it, `description:` is not rendered as a
+# system turn and the prompt is silently wrong. See utils.ToMBenchTask.
+class: !function utils.ToMBenchTask
 custom_dataset: !function utils.load
 test_split: train
 output_type: generate_until

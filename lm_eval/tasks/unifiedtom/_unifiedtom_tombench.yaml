@@ -1,0 +1,17 @@
+group: unifiedtom_tombench
+task:
+  - unifiedtom_uot
+  - unifiedtom_sit
+  - unifiedtom_pst
+  - unifiedtom_fbt
+  - unifiedtom_ast
+  - unifiedtom_ht
+  - unifiedtom_sst
+  - unifiedtom_frt
+aggregate_metric_list:
+  - metric: acc
+    aggregation: mean
+    weight_by_size: false
+metadata:
+  version: 0
+

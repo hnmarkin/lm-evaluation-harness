@@ -1,0 +1,7 @@
+include: _unifiedtom_template_yaml
+task: unifiedtom_multi_interaction
+task_alias: UnifiedToM Multi-Interaction direct
+tag: [theory_of_mind]
+dataset_kwargs:
+  subset: multi_interaction
+

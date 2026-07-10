@@ -36,6 +36,8 @@ from pathlib import Path
 
 import datasets
 
+from lm_eval.api.task import ConfigurableTask
+
 # ---------------------------------------------------------------------------
 # Data location
 # ---------------------------------------------------------------------------
@@ -467,19 +469,16 @@ def _mean(values):
     return sum(values) / len(values) if values else float("nan")
 
 
-_REPORT_CACHE = {}
-
-
 def _report(payloads):
     """AGG-FN: majority-vote each item, then roll up the paper's nested hierarchy.
 
-    Memoised on the identity of the payload list -- lm-eval hands the *same* list object to
-    all 57 aggregations, so the vote and roll-up run once per task, not 57 times.
+    Runs once per metric -- 57x per task, ~45 ms each -- and is not memoised. lm-eval hands
+    each metric its *own* list object (`evaluator.py`: `raw_metrics[(metric, filter_key)]`
+    is a `defaultdict(list)`), so there is no shared identity to key a cache on. An earlier
+    `id(payloads)`-keyed cache therefore never hit; worse, keying on `id()` is unsound in
+    principle, because a freed list's address can be reused by a later list of equal length
+    and would silently return the wrong metric's report.
     """
-    cache_key = (id(payloads), len(payloads))
-    if cache_key in _REPORT_CACHE:
-        return _REPORT_CACHE[cache_key]
-
     by_item = defaultdict(list)
     for payload in payloads:
         by_item[payload["item_id"]].append(payload)
@@ -531,8 +530,6 @@ def _report(payloads):
         report[f"coherent_{t}"] = coherent_acc[t]
     report["coherent_avg"] = _mean(v for v in coherent_acc.values() if not math.isnan(v))
 
-    _REPORT_CACHE.clear()
-    _REPORT_CACHE[cache_key] = report
     return report
 
 
@@ -545,3 +542,42 @@ def _make_agg(metric_name):
 
 for _name in METRIC_NAMES:
     globals()["agg_" + _name] = _make_agg(_name)
+
+
+# ---------------------------------------------------------------------------
+# Task class -- makes `--apply_chat_template` mandatory instead of merely documented
+# ---------------------------------------------------------------------------
+
+
+class ToMBenchTask(ConfigurableTask):
+    """A `ConfigurableTask` that refuses to run without `--apply_chat_template`.
+
+    ToMBench's system prompt is delivered through each YAML's `description:`, and lm-eval
+    promotes `description` to a real system turn ONLY when a chat template is applied. With
+    the flag, `build_context` emits `[system, user]` -- exactly what `run_huggingface.py`
+    hands to `tokenizer.apply_chat_template`. Without it, `build_context` falls back to
+    `"".join(m.to_text() for m in messages)` and `Message._delimiter` defaults to `""`, so
+    the system prompt is concatenated straight onto `[Story]` with no separator and no
+    system role. That is a different prompt, and it still produces a plausible number.
+
+    `--apply_chat_template` is a global CLI flag with no per-task YAML equivalent, so the
+    only place to enforce it is here, via the `class:` key (see `lm_eval/tasks/_factory.py`).
+    """
+
+    def __init__(self, config=None, **kwargs):
+        # `_build_task` hands us the merged YAML dict with its `class` key still in it, and
+        # `TaskConfig` is a dataclass that would reject the extra field.
+        if config is not None:
+            config = {k: v for k, v in config.items() if k != "class"}
+        super().__init__(config=config, **kwargs)
+
+    def build_all_requests(self, *, apply_chat_template: bool = False, **kwargs) -> None:
+        if not apply_chat_template:
+            raise ValueError(
+                f"{self.config.task}: ToMBench's system prompt is delivered via `description:`, "
+                "which lm-eval renders as a system turn only under `--apply_chat_template`. "
+                "Without that flag the system prompt is glued onto the story with no separator "
+                "and no system role, silently changing the prompt. Re-run with "
+                "`--apply_chat_template`."
+            )
+        super().build_all_requests(apply_chat_template=apply_chat_template, **kwargs)

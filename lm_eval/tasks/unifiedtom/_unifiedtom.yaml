@@ -1,0 +1,19 @@
+group: unifiedtom
+task:
+  - unifiedtom_uot
+  - unifiedtom_sit
+  - unifiedtom_pst
+  - unifiedtom_fbt
+  - unifiedtom_ast
+  - unifiedtom_ht
+  - unifiedtom_sst
+  - unifiedtom_frt
+  - unifiedtom_evolving_stories
+  - unifiedtom_multi_interaction
+aggregate_metric_list:
+  - metric: acc
+    aggregation: mean
+    weight_by_size: false
+metadata:
+  version: 0
+

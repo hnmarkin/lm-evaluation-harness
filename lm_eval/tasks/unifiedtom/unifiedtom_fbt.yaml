@@ -1,0 +1,7 @@
+include: _unifiedtom_template_yaml
+task: unifiedtom_fbt
+task_alias: UnifiedToM FBT direct
+tag: [theory_of_mind]
+dataset_kwargs:
+  subset: fbt
+

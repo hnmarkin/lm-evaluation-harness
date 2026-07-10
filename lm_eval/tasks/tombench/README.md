@@ -59,7 +59,8 @@ Values are reported in `[0, 1]`; the paper's tables are the same numbers ×100.
 ## Usage
 
 ```bash
-# System prompt is delivered via `description:` -> --apply_chat_template is REQUIRED.
+# System prompt is delivered via `description:` -> --apply_chat_template is REQUIRED, and
+# ENFORCED: every task routes through `utils.ToMBenchTask`, which raises without the flag.
 ~/miniconda3/envs/eval_env/python.exe -m lm_eval run \
     --model hf --model_args pretrained=Qwen/Qwen3-1.7B,dtype=float16 \
     --tasks tombench_en --apply_chat_template --batch_size 8 \
@@ -150,7 +151,7 @@ therefore reports 34 groups, not the paper's 31. Three defects separate them:
 | whitespace / casing | `"Information-knowledge links "`, `"Non-literal communication:"` | strip / re-case |
 
 This is **proven, not guessed**: after normalisation the per-ability question counts match the paper's
-Table 18 **exactly — all 31, summing to 2,860** (asserted in `parity_check.py`'s sibling loader test).
+Table 18 **exactly — all 31, summing to 2,860** (asserted in `loader_check.py`).
 
 ### 5. One upstream gold label is corrected (main tasks) — `*_rawgold` reproduces the bug
 
@@ -188,7 +189,13 @@ for **7 of the 8 tasks**, including the irregular ones:
 | **Faux-pas** | 560 | **141** | **140** ✗ | 139×4 + 1×3 + 1×1 |
 
 Persuasion Story coming out as 100 one-question stories independently corroborates the paper's aside
-that the coherent test applies "for all ToM tasks **except PST**".
+that "for all ToM tasks **except** the Persuasion Story Task (PST), most stories are associated with
+multiple coherent questions".
+
+Note what that sentence does *not* say: PST is **not** excluded from the coherent test. The paper plots
+it in Fig. 4 and observes that "no performance drop occurs in the persuasion story task", precisely
+because each PST story has exactly one question. So `coherent_pst` is identically equal to `task_pst`
+by construction, and `coherent_avg` macro-averages all 8 tasks. Do not "fix" this by dropping PST.
 
 **Faux-pas is a defect in the released file**, not a reconstruction failure: the "Xiao Wang roommate"
 story lost its *"Does anyone say something inappropriate?"* question (3 questions remain), and a
@@ -229,13 +236,36 @@ denominator plus one trivially-passable single-question story, i.e. **under one 
 PARITY OK
 ```
 
-Also verified, model-free:
+`loader_check.py` covers the **corpus** side, which `parity_check.py` never touches — it pins every
+count and mapping this adapter depends on, so a later edit to `normalize_ability` / `_story_ids` /
+the arity gate, or a bump of the `benchmarks/ToMBench` submodule, fails loudly instead of quietly
+reporting plausible numbers:
 
-* loader emits 14,300 docs / 2,860 items per language, 5 repeats each;
-* task view = 2,470 questions over 8 tasks; ability counts match paper Table 18 for all 31 abilities;
-* 483 en / 484 zh two-choice items; every item's gold is reachable through its de-map;
-* all-correct synthetic generations → all 57 metrics `1.0`; all-wrong → all `0.0`; the returned metric
-  names match `metric_list` exactly.
+```bash
+~/miniconda3/envs/eval_env/python.exe lm-evaluation-harness/lm_eval/tasks/tombench/loader_check.py
+```
+
+```
+[1/4] 31 abilities x exact Table-18 counts (sum 2860); 8 task shapes incl. story ids
+[2/4] loader: 2860x5 docs/lang, reps 0-4, 2470 task items, 483 en / 484 zh two-choice, every gold de-mappable
+      gold typo Knowledge-Attention Links#10: 'A. ' -> 'A' (main) / 'A. ' (rawgold), 1 row affected
+[3/4] 57 metric names == metric_list; all-correct -> 1.0, all-wrong -> 0.0
+[4/4] exactly 1 zh/en arity disagreement (Strange Story Task#292); C/D always vanish together
+LOADER OK
+```
+
+### Shrinking `--log_samples` output
+
+Because scoring is cross-item, `process_results` emits the *same* payload under all 57 metric names,
+and lm-eval's `example.update(metrics)` writes all 57 into every logged sample — roughly **90% of the
+samples file**. `dedupe_samples.py` verifies the 57 copies really are identical (an invariant of this
+pattern: if they ever diverge, the aggregations are silently reading different data) and collapses
+them into one `tombench_payload` key. Measured ~4.6× smaller.
+
+```bash
+python lm-evaluation-harness/lm_eval/tasks/tombench/dedupe_samples.py results/**/samples_tombench_*.jsonl
+python lm-evaluation-harness/lm_eval/tasks/tombench/dedupe_samples.py samples_tombench_zh.jsonl --check-only
+```
 
 Smoke-tested end-to-end with `Qwen/Qwen3-1.7B` (`enable_thinking=False`) on `tombench_{en,zh}` and
 `tombench_en_cot` under `--apply_chat_template`. Observed the de-map doing its job: across the five
