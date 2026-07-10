@@ -1,4 +1,5 @@
 group: unifiedtom
+group_alias: "UnifiedToM direct - derived macro (non-paper)"
 task:
   - unifiedtom_uot
   - unifiedtom_sit
@@ -15,5 +16,4 @@ aggregate_metric_list:
     aggregation: mean
     weight_by_size: false
 metadata:
-  version: 0
-
+  version: 1

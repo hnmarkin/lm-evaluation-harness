@@ -13,7 +13,8 @@ so it is not a single lm-eval model forward pass.
 
 ## Tasks
 
-`unifiedtom` is a macro group over the 10 Table-1-style direct leaves:
+`unifiedtom` is an adapter-derived, non-paper macro group over the 10 Table-1-style
+direct leaves:
 
 | task | source | n |
 |---|---|---:|
@@ -26,12 +27,17 @@ so it is not a single lm-eval model forward pass.
 | `unifiedtom_sst` | ToMBench `Strange Story Task` | 407 |
 | `unifiedtom_frt` | ToMBench `Faux-pas Recognition Test` | 560 |
 | `unifiedtom_evolving_stories` | `evolving_stories_250.xlsx` | 250 |
-| `unifiedtom_multi_interaction` | `multi_interaction_100.xlsx` | 100 |
+| `unifiedtom_multi_interaction` | `multi_interaction_100.xlsx` | 97 |
 
 Companion groups:
 
-- `unifiedtom_tombench` - macro mean over the 8 ToMBench leaves.
-- `unifiedtom_custom` - macro mean over the 2 README-canonical custom leaves.
+- `unifiedtom_tombench` - adapter-derived, non-paper macro mean over the 8
+  ToMBench leaves.
+- `unifiedtom_custom` - adapter-derived, non-paper macro mean over the 2
+  README-canonical custom leaves.
+
+The three macro aggregates are conveniences only. For faithful source/paper
+comparisons, report the individual leaf `acc` rows rather than an aggregate.
 
 ## Architecture
 
@@ -88,18 +94,25 @@ self-contained.
 5. **Generation cap and stop set.** The source OpenAI calls do not set a token cap
    or stop strings. The adapter uses `max_gen_toks: 32` and EOS/chat-end stops so
    local harness runs terminate predictably without cutting on newlines.
+6. **Repeated custom prompts follow source dictionary behavior.** The source custom
+   evaluators use the formatted prompt as a dictionary key. The adapter therefore
+   evaluates the 97 unique prompts in `multi_interaction_100.xlsx`, rather than all
+   100 spreadsheet rows. It retains the first source-row identifier and applies the
+   last duplicated row's gold answer, matching Python dictionary assignment;
+   source-row metadata records the first and last rows for auditability.
 
 ## Verification
 
 Model-free checks performed during build:
 
-- loader counts match the table above (2,820 docs total across the 10 leaves);
+- loader counts match the table above (2,817 docs total across the 10 leaves);
 - every gold letter is reachable from the emitted choices;
 - prompt samples match the source scripts' wording for direct ToMBench/custom rows;
 - all-correct synthetic generations score `1.0`; all-wrong generations score `0.0`;
-- `lm-eval validate --tasks unifiedtom` and representative leaf validation pass;
-- dummy-model smoke passes for `unifiedtom_uot --limit 2` and the full
-  `unifiedtom --limit 1` group.
+- `lm-eval validate --tasks unifiedtom,unifiedtom_tombench,unifiedtom_custom`
+  passes;
+- dummy-model `--limit 1` smokes pass for all three groups, each rendering its
+  derived, non-paper macro alias while preserving the leaf aliases.
 
 Real-model smoke should use a chat/instruction model with `--apply_chat_template`
 for paper-comparable prompting. `--limit` is only a plumbing check.

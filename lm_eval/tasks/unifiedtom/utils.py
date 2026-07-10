@@ -230,6 +230,26 @@ def _format_custom_prompt(scenario, question, raw_options):
     )
 
 
+def _collapse_custom_prompt_duplicates(docs):
+    """Match the custom source evaluators' ``questions[prompt] = answer`` maps.
+
+    Normal dictionary insertion preserves the first row's prompt position while a
+    later duplicate overwrites its gold answer.  We retain the first row's public
+    ``id``/``index`` metadata and record both source row numbers for auditability;
+    row metadata never enters prompting or scoring.
+    """
+    by_prompt = {}
+    for doc in docs:
+        prompt = doc["prompt"]
+        if prompt in by_prompt:
+            existing = by_prompt[prompt]
+            existing["target"] = doc["target"]
+            existing["source_row_last"] = doc["source_row_last"]
+        else:
+            by_prompt[prompt] = doc
+    return list(by_prompt.values())
+
+
 def _load_tombench_subset(subset):
     sheet_name, display_name = TOMBENCH_SHEETS[subset]
     path = _benchmark_dir() / "datasets" / "ToMBench_release_v1_0618.xlsx"
@@ -287,9 +307,11 @@ def _load_custom_subset(subset):
                 "prompt": _format_custom_prompt(scenario, question, raw_options),
                 "target": gold,
                 "arity": len(choices),
+                "source_row_first": row_idx,
+                "source_row_last": row_idx,
             }
         )
-    return docs
+    return _collapse_custom_prompt_duplicates(docs)
 
 
 def load(subset="all", **kwargs):
