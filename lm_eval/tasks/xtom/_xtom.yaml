@@ -1,0 +1,11 @@
+group: xtom
+task:
+  - xtom_xfantom
+  - xtom_xfantom_cot
+  - xtom_xtomi
+  - xtom_xtomi_cot
+  - xtom_xnegtom
+  - xtom_xnegtom_cot
+metadata:
+  version: 0
+
