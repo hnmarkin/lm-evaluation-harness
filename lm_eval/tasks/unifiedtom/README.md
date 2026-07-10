@@ -89,6 +89,26 @@ self-contained.
    or stop strings. The adapter uses `max_gen_toks: 32` and EOS/chat-end stops so
    local harness runs terminate predictably without cutting on newlines.
 
+## Paper-fragile variant (`unifiedtom_fragile`)
+
+`unifiedtom_fragile` is a companion group (10 `*_fragile` leaves) that deliberately
+*undoes* the two adapter choices which make the headline task diverge from the paper's
+Table 1, so a run measures what the paper actually measured:
+
+1. **`nan` options restored.** Missing Strange-Story / Faux-pas C/D options are rendered
+   as the literal `Option C: nan, Option D: nan` (exactly as `tom.py`'s pandas f-string
+   does), instead of being dropped (deviation #3). Every row becomes four-option.
+2. **Strict scorer.** `process_results_fragile` compares `response.strip() == target`
+   with no uppercasing or dot-removal, reproducing the paper's exact-match sensitivity to
+   casing, trailing punctuation, and verbose answers. (`strip` — vs `tom.py`'s bare `==` —
+   only removes a local leading/trailing-whitespace artifact, so it isolates format
+   fragility rather than a tokenizer quirk.)
+
+Everything else (prompt wording, system message, `temperature: 0.7`, `max_gen_toks: 32`)
+is identical to the headline task, so `unifiedtom` vs `unifiedtom_fragile` isolates the
+effect of those two deviations against the paper's baseline. Run it the same way, swapping
+the task name; use `--apply_chat_template` for chat models as with the headline task.
+
 ## Verification
 
 Model-free checks performed during build:

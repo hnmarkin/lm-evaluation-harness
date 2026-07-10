@@ -1,0 +1,18 @@
+group: unifiedtom_fragile
+task:
+  - unifiedtom_uot_fragile
+  - unifiedtom_sit_fragile
+  - unifiedtom_pst_fragile
+  - unifiedtom_fbt_fragile
+  - unifiedtom_ast_fragile
+  - unifiedtom_ht_fragile
+  - unifiedtom_sst_fragile
+  - unifiedtom_frt_fragile
+  - unifiedtom_evolving_stories_fragile
+  - unifiedtom_multi_interaction_fragile
+aggregate_metric_list:
+  - metric: acc
+    aggregation: mean
+    weight_by_size: false
+metadata:
+  version: 0

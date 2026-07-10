@@ -1,0 +1,7 @@
+include: _unifiedtom_fragile_template_yaml
+task: unifiedtom_ht_fragile
+task_alias: UnifiedToM HT fragile
+tag: [theory_of_mind]
+dataset_kwargs:
+  subset: ht
+  fragile: true
