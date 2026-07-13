@@ -202,7 +202,7 @@ def _normalise_doc(row, task_id, spec):
         )
     gold = sorted(set(gold))
 
-    return {
+    doc = {
         "dialogue_id": int(row["dialogue_id"]),
         "utterance_pos": int(row["utterance_pos"]),
         "utterance_context": str(row["utterance_context"]),
@@ -218,6 +218,11 @@ def _normalise_doc(row, task_id, spec):
         "role": spec["role"],
         "multi_label": bool(spec["multi_label"]),
     }
+    # ConfigurableTask resolves the direct template's ``description`` against
+    # this field and renders it as a real system turn under
+    # --apply_chat_template.  The source bridge uses the same two-turn shape.
+    doc["system_prompt"] = _direct_system_prompt(doc)
+    return doc
 
 
 def load(task_id=None, **kwargs):
@@ -294,7 +299,8 @@ def _base_user_prompt(doc):
 
 
 def doc_to_text(doc):
-    return _direct_system_prompt(doc) + "\n" + _base_user_prompt(doc)
+    """Direct-mode user turn; ``system_prompt`` is rendered via description."""
+    return _base_user_prompt(doc)
 
 
 def doc_to_text_cot(doc):

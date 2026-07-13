@@ -64,7 +64,7 @@ the source scripts' sentinel path rather than retrying.
 ```bash
 PYTHONIOENCODING=utf-8 lm-eval run --model hf \
   --model_args pretrained=<model> \
-  --tasks rectom \
+  --tasks rectom --apply_chat_template \
   --output_path outputs/rectom --log_samples
 
 PYTHONIOENCODING=utf-8 lm-eval run --model hf \
@@ -76,9 +76,10 @@ PYTHONIOENCODING=utf-8 lm-eval run --model hf \
 If your lm-eval entry point is not using this vendored checkout's task tree,
 also pass `--include_path lm-evaluation-harness/lm_eval/tasks`.
 
-For chat-tuned models, compare runs consistently with or without
-`--apply_chat_template`. Do not also pass `--system_instruction`; the official
-system instruction is already baked into `doc_to_text`.
+Use `--apply_chat_template` for the direct task: its per-document
+`system_prompt` is resolved through `description` and rendered as the source
+protocol's real system turn. Do not also pass `--system_instruction`; the
+official system instruction is already supplied by the task.
 
 Smoke-test a small slice before a full run:
 
@@ -94,12 +95,13 @@ emit a benchmark-wide aggregate.
 
 ## Faithfulness deviations
 
-1. **System message baked into the prompt.** The official scripts use a chat
-   system message for most models and concatenate system+user for `o1`/`gemma`.
-   lm-eval task YAML has no per-task system-role field, and RecToM's direct and
-   CoT system prompts differ, so the adapter bakes the system instruction into
-   the plain prompt. This matches the released fallback path and keeps the task
-   self-contained.
+1. **Direct system message restored; CoT remains concatenated.** The direct
+   template resolves its per-document `system_prompt` via `description`, which
+   `ConfigurableTask.fewshot_context` emits as a real system turn under
+   `--apply_chat_template`; the direct user turn is now byte-identical to the
+   bridge's user content. The CoT template still concatenates its distinct
+   system instruction into `doc_to_text_cot`, matching the prior fallback path;
+   it has no original-side comparison baseline in this project.
 2. **Bounded direct retry.** The official direct scripts retry until a valid
    parsed candidate appears. lm-eval cannot perform an unbounded conditional
    generate loop, so this adapter requests 5 sampled repeats and scores the
@@ -142,3 +144,7 @@ emit a benchmark-wide aggregate.
   built contexts, ran `generate_until`, produced `acc` for all six smoke leaves,
   and logged 5 direct repeats under the `first_valid` filter while keeping CoT
   single-shot under the default `none` filter.
+- Direct system-turn regression check: `fewshot_context(...,
+  apply_chat_template=True)` for `prediction_seeker` and `judgement_rec`
+  produced exactly the original bridge's two message dictionaries, including
+  byte-identical system and user contents.
