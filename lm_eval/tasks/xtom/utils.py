@@ -241,12 +241,55 @@ def _build_xfantom_docs() -> tuple[dict, ...]:
                     "language": language,
                     "family": family,
                     "qid": f"xfantom:{language}:{set_id}:{qkey}",
+                    # This stays language-neutral so the paper's parallel
+                    # translations can be scored as one consistency group.
+                    "parallel_id": f"xfantom:{set_id}:{qkey}",
                     "gold": gold,
                     "choices": choices,
                 }
                 docs.append(_doc(prompt, "(a)" if gold == 0 else "(b)", meta))
         by_language[language] = docs
+    _validate_xfantom_parallel_docs(by_language)
     return tuple(_interleave(by_language))
+
+
+def _validate_xfantom_parallel_docs(by_language: dict[str, list[dict]]) -> None:
+    """Assert that every XFANToM question has five aligned translations."""
+    groups: dict[str, list[dict]] = {}
+    for language, docs in by_language.items():
+        if language not in LANGUAGES:
+            raise ValueError(f"unexpected XFANToM language: {language!r}")
+        for doc in docs:
+            meta = json.loads(doc["meta"])
+            groups.setdefault(meta["parallel_id"], []).append(meta)
+
+    family_counts = {"fact": 0, "belief": 0}
+    expected_languages = set(LANGUAGES)
+    for parallel_id, group in groups.items():
+        languages = {item["language"] for item in group}
+        if len(group) != len(LANGUAGES) or languages != expected_languages:
+            raise ValueError(
+                f"incomplete or duplicate XFANToM parallel group {parallel_id!r}: "
+                f"{sorted(languages)!r}"
+            )
+        golds = {item["gold"] for item in group}
+        if len(golds) != 1:
+            raise ValueError(
+                f"XFANToM option positions do not align in {parallel_id!r}: "
+                f"{sorted(golds)!r}"
+            )
+        families = {item["family"] for item in group}
+        if families == {"fact"}:
+            family_counts["fact"] += 1
+        elif len(families) == 1 and next(iter(families)).startswith("belief_"):
+            family_counts["belief"] += 1
+        else:
+            raise ValueError(
+                f"XFANToM family mismatch in {parallel_id!r}: {sorted(families)!r}"
+            )
+
+    if family_counts != {"fact": 300, "belief": 318}:
+        raise ValueError(f"unexpected XFANToM parallel-group counts: {family_counts!r}")
 
 
 def load_xfantom(**kwargs):
@@ -652,6 +695,7 @@ def _score_doc(doc, results: list[str]) -> dict:
         "language": meta["language"],
         "family": family,
         "qid": meta["qid"],
+        "parallel_id": meta.get("parallel_id"),
         "gold": meta["gold"],
         "prediction": prediction,
         "valid": bool(valid),
@@ -668,13 +712,26 @@ _XFANTOM_COLUMNS = (
     "belief_acc", "belief_first_acc", "belief_second_acc",
     "belief_acyclic_acc", "belief_cyclic_acc", "fact_acc", "invalid_rate",
 )
+_XFANTOM_CONSISTENCY_METRICS = tuple(
+    f"{family}_{metric}"
+    for family in ("fact", "belief")
+    for metric in (
+        "average_accuracy",
+        "consistently_correct",
+        "consistently_false",
+        "consistent_answer",
+    )
+)
 _XTOMI_COLUMNS = ("first_order_acc", "second_order_acc", "belief_acc", "reality_acc", "invalid_rate")
 _XNEGTOM_COLUMNS = (
     "belief_exact_match", "desire_exact_match", "intention_micro_f1",
     "intention_macro_f1", "invalid_rate",
 )
 
-METRICS_XFANTOM = tuple(f"{language}_{column}" for language in LANGUAGES for column in _XFANTOM_COLUMNS)
+METRICS_XFANTOM = (
+    tuple(f"{language}_{column}" for language in LANGUAGES for column in _XFANTOM_COLUMNS)
+    + _XFANTOM_CONSISTENCY_METRICS
+)
 METRICS_XTOMI = tuple(f"{language}_{column}" for language in LANGUAGES for column in _XTOMI_COLUMNS)
 METRICS_XNEGTOM = tuple(f"{language}_{column}" for language in LANGUAGES for column in _XNEGTOM_COLUMNS)
 
@@ -728,6 +785,70 @@ def _intention_f1(items: list[dict], average: str) -> float:
     return 100.0 * sum(scores) / len(scores)
 
 
+def _xfantom_parallel_groups(payloads, family: str) -> list[list[dict]]:
+    """Return complete, option-aligned five-language XFANToM question groups."""
+    selected = [
+        item
+        for item in payloads
+        if item["source"] == "xfantom"
+        and (item["family"] == "fact" if family == "fact" else item["family"].startswith("belief_"))
+    ]
+    groups: dict[str, list[dict]] = {}
+    for item in selected:
+        parallel_id = item.get("parallel_id")
+        if not parallel_id:
+            raise ValueError("XFANToM consistency payload is missing parallel_id")
+        groups.setdefault(parallel_id, []).append(item)
+
+    expected_languages = set(LANGUAGES)
+    complete_groups = []
+    for parallel_id, group in groups.items():
+        languages = {item["language"] for item in group}
+        if len(group) != len(LANGUAGES) or languages != expected_languages:
+            raise ValueError(
+                f"incomplete or duplicate XFANToM consistency group {parallel_id!r}: "
+                f"{sorted(languages)!r}"
+            )
+        golds = {item["gold"] for item in group}
+        if len(golds) != 1:
+            raise ValueError(
+                f"XFANToM option positions do not align in {parallel_id!r}: "
+                f"{sorted(golds)!r}"
+            )
+        complete_groups.append(group)
+    return complete_groups
+
+
+def _xfantom_consistency(metric: str, payloads) -> float:
+    """Reconstruct the paper-body multilingual consistency bars (percent)."""
+    family, column = metric.split("_", 1)
+    groups = _xfantom_parallel_groups(payloads, family)
+    if not groups:
+        return float("nan")
+    if column == "average_accuracy":
+        return _mean_percent([item for group in groups for item in group])
+
+    consistently_correct = [
+        all(item["valid"] and item["correct"] for item in group) for group in groups
+    ]
+    consistently_false = [
+        all(item["valid"] for item in group)
+        and all(not item["correct"] for item in group)
+        and len({item["prediction"] for item in group}) == 1
+        for group in groups
+    ]
+    if column == "consistently_correct":
+        return 100.0 * sum(consistently_correct) / len(groups)
+    if column == "consistently_false":
+        return 100.0 * sum(consistently_false) / len(groups)
+    if column == "consistent_answer":
+        return 100.0 * sum(
+            correct or false
+            for correct, false in zip(consistently_correct, consistently_false, strict=True)
+        ) / len(groups)
+    raise KeyError(metric)
+
+
 def _aggregate(metric: str, payloads) -> float:
     language, column = metric.split("_", 1)
     items = [item for item in payloads if item["language"] == language]
@@ -775,8 +896,67 @@ def _make_aggregation(metric: str):
     return aggregation
 
 
+def _make_xfantom_consistency_aggregation(metric: str):
+    def aggregation(payloads):
+        return _xfantom_consistency(metric, payloads)
+
+    aggregation.__name__ = f"agg_{metric}"
+    return aggregation
+
+
 for _metric in set(METRICS_XFANTOM + METRICS_XTOMI + METRICS_XNEGTOM):
-    globals()[f"agg_{_metric}"] = _make_aggregation(_metric)
+    if _metric in _XFANTOM_CONSISTENCY_METRICS:
+        globals()[f"agg_{_metric}"] = _make_xfantom_consistency_aggregation(_metric)
+    else:
+        globals()[f"agg_{_metric}"] = _make_aggregation(_metric)
+
+
+def validate_xfantom_consistency() -> None:
+    """Model-free invariants for the multilingual consistency reconstruction."""
+    def group(
+        parallel_id: str, predictions: list[int | None], gold: int = 0
+    ) -> list[dict]:
+        return [
+            {
+                "source": "xfantom",
+                "language": language,
+                "family": "fact",
+                "parallel_id": parallel_id,
+                "gold": gold,
+                "prediction": prediction,
+                "valid": prediction is not None,
+                "correct": prediction == gold,
+            }
+            for language, prediction in zip(LANGUAGES, predictions, strict=True)
+        ]
+
+    all_correct = group("test:correct", [0, 0, 0, 0, 0])
+    all_same_wrong = group("test:false", [1, 1, 1, 1, 1])
+    mixed = group("test:mixed", [0, 1, 0, 1, 0])
+    invalid = group("test:invalid", [0, 0, None, 0, 0])
+    unequal_language_scores = all_correct + group("test:average", [0, 1, 1, 1, 1])
+    assert _xfantom_consistency("fact_consistently_correct", all_correct) == 100.0
+    assert _xfantom_consistency("fact_consistently_false", all_same_wrong) == 100.0
+    assert _xfantom_consistency("fact_consistent_answer", all_correct) == 100.0
+    assert _xfantom_consistency("fact_consistent_answer", all_same_wrong) == 100.0
+    assert _xfantom_consistency("fact_average_accuracy", unequal_language_scores) == 60.0
+    for payloads in (mixed, invalid):
+        assert _xfantom_consistency("fact_consistently_correct", payloads) == 0.0
+        assert _xfantom_consistency("fact_consistently_false", payloads) == 0.0
+        assert _xfantom_consistency("fact_consistent_answer", payloads) == 0.0
+    try:
+        _xfantom_consistency("fact_consistent_answer", all_correct[:-1])
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("incomplete XFANToM language group was accepted")
+    duplicate_language = all_correct[:-1] + [all_correct[0]]
+    try:
+        _xfantom_consistency("fact_consistent_answer", duplicate_language)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("duplicate XFANToM language group was accepted")
 
 
 def expected_counts() -> dict[str, dict[str, int]]:

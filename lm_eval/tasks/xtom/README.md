@@ -1,9 +1,10 @@
 # XToM
 
 This adapter reconstructs the multilingual generative evaluation reported for
-Qwen-2.5-7B-Instruct in XToM Tables 8--10. The released XToM repository ships
-the translated data archive but no evaluation code, so the paper's prompt
-tables and metric definitions are the executable specification.
+Qwen-2.5-7B-Instruct in XToM Tables 8--10 and the paper-body XFANToM
+cross-lingual-consistency figure. The released XToM repository ships the
+translated data archive but no evaluation code, so the paper's prompt tables
+and metric definitions are the executable specification.
 
 ## Tasks
 
@@ -27,6 +28,16 @@ not alter accuracy or F1.
 
 The loaders read `benchmarks/XToM/XToM_DataSet.zip` in place. They neither
 extract nor modify anything under `benchmarks/`.
+
+For both XFANToM leaves, the adapter also reports the paper-body multilingual
+consistency metrics separately for `fact` and `belief`: `average_accuracy`,
+`consistently_correct`, `consistently_false`, and `consistent_answer`. A
+parallel group contains the five aligned `en`, `zh`, `de`, `fr`, and `ja`
+questions. Invalid output makes its group inconsistent but does not remove it
+from the denominator; `consistently_false` additionally requires the same
+valid, incorrect normalized option index in every language. This is a
+conservative reconstruction because the released archive does not include the
+paper evaluator.
 
 ## Published protocol represented here
 
@@ -85,7 +96,9 @@ python lm-evaluation-harness/lm_eval/tasks/xtom/compare_paper.py \
   --output outputs/xtom-qwen25-paper-comparison.md
 ```
 
-The report shows adapter minus paper deltas in percentage points. Sampling is
+The report shows adapter minus paper-table deltas in percentage points. The
+cross-lingual consistency metrics are paper-body results but are not table
+cells, so inspect them directly in the XFANToM result JSON. Sampling is
 nondeterministic unless the model/backend seed behavior is also held fixed, so
 small rerun differences are expected.
 
@@ -120,14 +133,16 @@ cannot be established:
    giving 1,760 rather than 1,758 documents per language. Consequently this
    leaf evaluates 8,800 documents, ten more than the paper's stated total.
 
-The paper also studies cross-lingual consistency outside the target Tables
-8--10. It is intentionally not an extra offline component of this six-task
-adapter.
+The adapter implements the paper-body XFANToM cross-lingual-consistency
+analysis. Appendix-only consistency analyses, including XToMi consistency,
+remain out of scope.
 
 ## Verification
 
-The implementation checks exact language/family counts while loading. Local
-verification covers Python compilation, all-valid and all-invalid full-corpus
-metric invariants, `lm-eval validate`, and a dummy-model generation/scoring
-run. A real Qwen-2.5-7B smoke and the six full jobs remain cluster runs because
-the model does not fit the development machine's available GPU memory.
+The implementation checks exact language/family counts while loading, including
+300 complete FactQA and 318 complete BeliefQA five-language XFANToM groups with
+aligned displayed gold positions. Local verification covers Python compilation,
+all-valid and all-invalid full-corpus metric invariants, `lm-eval validate`, and
+a dummy-model generation/scoring run. A real Qwen-2.5-7B smoke and the six full
+jobs remain cluster runs because the model does not fit the development
+machine's available GPU memory.

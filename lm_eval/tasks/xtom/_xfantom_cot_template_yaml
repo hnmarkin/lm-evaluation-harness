@@ -119,6 +119,29 @@ metric_list:
   - metric: ja_invalid_rate
     aggregation: !function utils.agg_ja_invalid_rate
     higher_is_better: false
+  - metric: fact_average_accuracy
+    aggregation: !function utils.agg_fact_average_accuracy
+    higher_is_better: true
+  - metric: fact_consistently_correct
+    aggregation: !function utils.agg_fact_consistently_correct
+    higher_is_better: true
+  - metric: fact_consistently_false
+    aggregation: !function utils.agg_fact_consistently_false
+    higher_is_better: true
+  - metric: fact_consistent_answer
+    aggregation: !function utils.agg_fact_consistent_answer
+    higher_is_better: true
+  - metric: belief_average_accuracy
+    aggregation: !function utils.agg_belief_average_accuracy
+    higher_is_better: true
+  - metric: belief_consistently_correct
+    aggregation: !function utils.agg_belief_consistently_correct
+    higher_is_better: true
+  - metric: belief_consistently_false
+    aggregation: !function utils.agg_belief_consistently_false
+    higher_is_better: true
+  - metric: belief_consistent_answer
+    aggregation: !function utils.agg_belief_consistent_answer
+    higher_is_better: true
 metadata:
-  version: 0
-
+  version: 1
