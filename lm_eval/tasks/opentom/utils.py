@@ -40,8 +40,9 @@ PAPER PROTOCOL (baked in — for direct comparability to run_baseline.py/evaluat
     and return the batch mean (`macro_f1`/`acc`) or batch std (`*_std`).
   * Multihop fullness downsampling: each narrative has 4 fullness + 2 accessibility
     multihop questions; run_baseline.sample_questions drops 2 fullness so the
-    combined ("overall") metric is a balanced 2:2 mix.  We keep the first 2 fullness
-    per narrative (deterministic; the specific pair is within the paper's own std).
+    combined ("overall") metric is a balanced 2:2 mix.  `_fullness_selection`
+    replays the original seed-42 NumPy draws in their exact call order (FO then SO
+    for each shuffled narrative), so each leaf keeps the same realized pair.
   * Generation: open-model runs stop at ['\n','\n\n'] (run_baseline.py); the
     template's `until` includes both.
 
@@ -128,7 +129,7 @@ def _read_meta():
 _SEED = 42
 _NUM_BATCH = 5
 _BATCH_SIZE = 50
-_FULLNESS_KEEP = 2   # sample_questions drops 2 of the 4 fullness Qs -> keep 2 (balanced 2:2)
+_FULLNESS_DROP = 2  # sample_questions randomly drops 2 of 4 fullness Qs -> balanced 2:2
 
 
 @functools.lru_cache(maxsize=1)
@@ -157,6 +158,64 @@ def _subset():
     return key2batch, narr2key
 
 
+@functools.lru_cache(maxsize=1)
+def _fullness_selection():
+    """Replay the original seed-42 fullness sampling for the default ``all`` run.
+
+    ``run_baseline.sample_questions`` is called once per shuffled narrative and
+    loops through ``valid_q_types`` in this order: location FO, location SO,
+    multihop FO, multihop SO, attitude. Only the two multihop types consume the
+    NumPy RNG, so the load-bearing sequence is one FO draw followed by one SO
+    draw for every narrative. A leaf-local RNG would be wrong: independently
+    loading FO or SO would consume a different part of the original sequence.
+
+    Returns ``{(narrative_key, question_type): frozenset(question_indices)}``,
+    where the indices refer to that type's question-list order and identify the
+    two fullness questions retained after the original randomly chosen two are
+    removed.
+    """
+    key2batch, narr2key = _subset()
+    multihop_types = ("multihop-fo", "multihop-so")
+    questions_by_key_type = {}
+
+    # opentom.json preserves the per-key/per-type order in the original
+    # opentom_data/multihop_{fo,so}.json files (parity-verified). Rebuild those
+    # six-question lists so np.random.choice sees the same fullness indices.
+    for doc in _read_opentom():
+        key = narr2key.get(doc["narrative"])
+        qtype = doc["question"]["type"]
+        if key in key2batch and qtype in multihop_types:
+            questions_by_key_type.setdefault((key, qtype), []).append(
+                doc["question"]["question"]
+            )
+
+    # Legacy RandomState matches np.random.seed(42) + np.random.choice used by
+    # the released benchmark. Do not replace with default_rng: it has a different
+    # random stream for the same seed.
+    rng = np.random.RandomState(_SEED)
+    selection = {}
+    for key in key2batch:  # insertion order is the shuffled 250-key order
+        for qtype in multihop_types:  # original call order: FO, then SO
+            questions = questions_by_key_type.get((key, qtype), [])
+            fullness_indices = [
+                idx for idx, question in enumerate(questions) if "fullness" in question
+            ]
+            if len(fullness_indices) != 4:
+                raise ValueError(
+                    f"Expected 4 fullness questions for {key}/{qtype}, "
+                    f"found {len(fullness_indices)}"
+                )
+            dropped = set(
+                int(idx)
+                for idx in rng.choice(fullness_indices, _FULLNESS_DROP, replace=False)
+            )
+            selection[(key, qtype)] = frozenset(
+                idx for idx in fullness_indices if idx not in dropped
+            )
+
+    return selection
+
+
 def load(genre=None, order=None, granularity=None, **kwargs):
     """Filter opentom.json to one partition, restrict to the paper's 250-narrative
     seed-42 subset, downsample multihop fullness to 2, and tag each doc with
@@ -171,9 +230,10 @@ def load(genre=None, order=None, granularity=None, **kwargs):
     ('initial', Yes/No) — exactly build_prompt.py's 'locate'/'initial' branch.
     """
     key2batch, narr2key = _subset()
+    fullness_selection = _fullness_selection() if genre == "multihop" else None
     type_suffix = {"fo": "-fo", "so": "-so"}.get(order)
     docs = []
-    fullness_kept = {}   # narrative_key -> count of fullness Qs kept (downsample to 2)
+    multihop_question_idx = {}  # narrative_key -> index within this order's 6-Q list
     for d in _read_opentom():
         narrative = d["narrative"]
         key = narr2key.get(narrative)
@@ -203,14 +263,14 @@ def load(genre=None, order=None, granularity=None, **kwargs):
         elif genre == "multihop":
             if type_suffix is None or t != "multihop" + type_suffix:
                 continue
+            qidx = multihop_question_idx.get(key, 0)
+            multihop_question_idx[key] = qidx + 1
             if "fullness" in qtext:
                 _genre = "fullness"
-                # Downsample: keep only the first _FULLNESS_KEEP fullness Qs per
-                # narrative (run_baseline.sample_questions drops the other 2).
-                c = fullness_kept.get(key, 0)
-                if c >= _FULLNESS_KEEP:
+                # Keep the exact complement of run_baseline.sample_questions'
+                # seeded random choice of two fullness indices to remove.
+                if qidx not in fullness_selection[(key, t)]:
                     continue
-                fullness_kept[key] = c + 1
             else:
                 _genre = "accessibility"
         elif genre == "attitude":

@@ -22,7 +22,9 @@ as one pool, the adapter reproduces the original's sampling and aggregation exac
 - **Mean ± std of per-batch metrics**, not one pooled score (`evaluate.py`: per-batch
   `f1_score`, then `np.mean`/`np.std` over the 5 batches).
 - **Multihop fullness downsampled 4 → 2** per narrative, so the combined multihop metric is a
-  balanced 2:2 fullness:accessibility mix (`sample_questions`).
+  balanced 2:2 fullness:accessibility mix (`sample_questions`). The adapter replays the original
+  seed-42 NumPy draws in their exact call order (FO then SO for each shuffled narrative), retaining
+  the same realized pair of fullness questions in every narrative.
 
 ## Tasks (group `opentom`)
 
@@ -89,10 +91,10 @@ lm-eval ... --tasks opentom_location_fg_fo --limit 5 --log_samples
    replace in `build_prompt.py` is a no-op because the `.txt` templates contain only
    `{narrative}`/`{question}` — verified.)
 2. **Paper protocol reproduced** (250-narrative seed-42 subset, 5 batches × 50, mean ± std of
-   per-batch macro-F1, 2:2 fullness). This is now a *faithful reproduction*, not a deviation —
-   see the "Paper protocol" box above. Caveat: the specific 2 fullness questions dropped differ
-   from the original's `np.random.choice` pick (we keep the first 2 deterministically); the
-   composition is identical (2:2) and the specific pair is within the paper's own std.
+   per-batch macro-F1, and the exact seeded 2:2 fullness/accessibility selection). The fullness
+   selection uses legacy `np.random.RandomState(42)` and always consumes draws in the original
+   default-run order—FO then SO for each shuffled narrative—even when lm-eval loads just one leaf.
+   This is a faithful reproduction, not a deviation; see the "Paper protocol" box above.
 3. **System message baked into the prompt.** The original prepends a system turn
    `"You are an expert in modeling other's mental state."` (`load_baseline_model.py`). lm-eval's
    `--system_instruction` is a run-level flag (only active with `--apply_chat_template`), so to
