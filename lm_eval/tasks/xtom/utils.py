@@ -20,7 +20,6 @@ from __future__ import annotations
 
 import functools
 import json
-import random
 import re
 import unicodedata
 import zipfile
@@ -30,7 +29,6 @@ import datasets
 
 
 LANGUAGES = ("en", "zh", "de", "fr", "ja")
-_CHOICE_SEED = 99
 
 
 # ---------------------------------------------------------------------------
@@ -188,14 +186,6 @@ _XFANTOM_TEMPLATES = {
 }
 
 
-def _binary_choices(qa: dict, rng: random.Random) -> tuple[list[str], int]:
-    """Reuse FANToM's seed-99 wrong/correct binary shuffle (documented reconstruction)."""
-    wrong, correct = qa["wrong_answer"], qa["correct_answer"]
-    if rng.choice([True, False]):
-        return [wrong, correct], 1
-    return [correct, wrong], 0
-
-
 def _xfantom_family(qa: dict) -> str:
     tom_type = qa["tom_type"]
     if tom_type == "first-order":
@@ -211,7 +201,6 @@ def _xfantom_family(qa: dict) -> str:
 def _build_xfantom_docs() -> tuple[dict, ...]:
     by_language = {}
     for language in LANGUAGES:
-        rng = random.Random(_CHOICE_SEED)
         docs = []
         seen_set_ids = set()
         for row in _read_entry(_entry_name("xfantom", language)):
@@ -229,7 +218,11 @@ def _build_xfantom_docs() -> tuple[dict, ...]:
                 if qa["question_type"] == "tom:belief:inaccessible"
             )
             for qkey, qa, family in candidates:
-                choices, gold = _binary_choices(qa, rng)
+                # XToM releases these fields in the paper's displayed A/B order.
+                # It provides no evaluator or shuffle procedure, so preserve that
+                # representation rather than reconstructing FANToM's unrelated RNG.
+                choices = [qa["correct_answer"], qa["wrong_answer"]]
+                gold = 0
                 prompt = _XFANTOM_TEMPLATES[language].format(
                     context=context,
                     question=qa["question"],
@@ -247,7 +240,7 @@ def _build_xfantom_docs() -> tuple[dict, ...]:
                     "gold": gold,
                     "choices": choices,
                 }
-                docs.append(_doc(prompt, "(a)" if gold == 0 else "(b)", meta))
+                docs.append(_doc(prompt, "(a)", meta))
         by_language[language] = docs
     _validate_xfantom_parallel_docs(by_language)
     return tuple(_interleave(by_language))
@@ -273,9 +266,9 @@ def _validate_xfantom_parallel_docs(by_language: dict[str, list[dict]]) -> None:
                 f"{sorted(languages)!r}"
             )
         golds = {item["gold"] for item in group}
-        if len(golds) != 1:
+        if golds != {0}:
             raise ValueError(
-                f"XFANToM option positions do not align in {parallel_id!r}: "
+                f"XFANToM fixed correct-A option positions drifted in {parallel_id!r}: "
                 f"{sorted(golds)!r}"
             )
         families = {item["family"] for item in group}
@@ -627,66 +620,221 @@ def doc_to_text_cot(doc):
     return doc["prompt"] + "\nlet's think step by step."
 
 
-_CUE_RE = re.compile(
-    r"(?is)(?:final\s+answer|the\s+answer\s+is|answer|antwort|réponse|答案|回答)\s*[:：]?"
+_ANSWER_CUE_RE = re.compile(
+    r"(?i)(?:final\s+answer|the\s+answer\s+is|answer|antwort|réponse|答案|回答|答え)\s*[:：]?"
+)
+_THINK_RE = re.compile(r"(?is)<think>.*?</think>")
+_QUESTION_LINE_RE = re.compile(
+    r"(?i)^\s*(?:question|frage|问题|質問)\s*([1-3])\s*[:：]\s*(.*?)\s*$"
 )
 
 
-def _answer_tail(text: str) -> str:
-    text = re.sub(r"(?is)<think>.*?</think>", " ", str(text)).strip()
-    matches = list(_CUE_RE.finditer(text))
-    if matches:
-        text = text[matches[-1].end():].strip()
-    lines = [line.strip() for line in text.splitlines() if line.strip()]
-    return lines[-1] if lines else text.strip()
+def _clean_response(text: str) -> str:
+    """Keep the entire response, removing only hidden reasoning blocks."""
+    return _THINK_RE.sub(" ", str(text)).strip()
 
 
-def _extract_single(text: str, choices: list[str]) -> int | None:
-    tail = _answer_tail(text)
-    parenthesized = re.findall(r"(?i)\(([a-b])\)", tail)
-    if parenthesized:
-        return ord(parenthesized[-1].lower()) - ord("a")
-    strong = re.findall(r"(?i)(?<![A-Za-z])([a-b])(?:[\s\.,:;)\]]|$)", tail)
-    if strong:
-        return ord(strong[-1].lower()) - ord("a")
-
-    normalized_tail = _norm(tail)
-    exact = [i for i, choice in enumerate(choices) if normalized_tail == _norm(choice)]
-    if len(exact) == 1:
-        return exact[0]
-    contained = [i for i, choice in enumerate(choices) if _norm(choice) and _norm(choice) in normalized_tail]
-    return contained[0] if len(contained) == 1 else None
+def _answer_spans(text: str):
+    """Yield same-line spans after explicit multilingual answer cues."""
+    for match in _ANSWER_CUE_RE.finditer(text):
+        line_end = text.find("\n", match.end())
+        yield text[match.end() : None if line_end == -1 else line_end]
 
 
-def _extract_letters(text: str, upper: str, expected: int | None = None) -> list[int] | None:
-    tail = _answer_tail(text)
-    letters = re.findall(
-        rf"(?i)(?<![A-Za-z])([a-{upper.lower()}])(?![A-Za-z])",
-        tail,
+def _marked_labels(text: str) -> list[str]:
+    """Return explicit option labels, never arbitrary prose letters."""
+    labels = []
+    for parenthesized, punctuated in re.findall(
+        r"(?i)(?:\(\s*([a-z])\s*\)|(?:^|[\s:：=\-])([a-z])\s*[).:：])",
+        text,
+    ):
+        labels.append((parenthesized or punctuated).lower())
+    return labels
+
+
+def _leading_label(text: str) -> str | None:
+    """Read a bare label only where an answer cue has already supplied context."""
+    match = re.match(
+        r"(?is)^\s*(?:(?:correct(?:e)?\b|is\b|ist\b|est\b|是|为|為|は)\s*[:：=\-]?\s*)*"
+        r"[\(\[]?\s*([a-z])\s*[\)\]]?(?=\s|[.,;:：]|$)",
+        text,
     )
-    if expected is not None and len(letters) != expected:
+    return match.group(1).lower() if match else None
+
+
+def _option_value(text: str, choices: list[str]) -> tuple[bool, int | None]:
+    normalized = _norm(text)
+    exact = [
+        index for index, choice in enumerate(choices) if normalized == _norm(choice)
+    ]
+    if exact:
+        return True, exact[0] if len(exact) == 1 else None
+    matches = [
+        index
+        for index, choice in enumerate(choices)
+        if _norm(choice) and _norm(choice) in normalized
+    ]
+    if not matches:
+        return False, None
+    return True, matches[0] if len(matches) == 1 else None
+
+
+def _choice_from_answer_span(span: str, choices: list[str]) -> tuple[bool, int | None]:
+    """Parse one explicit answer statement; conflict and range errors are invalid."""
+    labels = _marked_labels(span)
+    # Bare alternatives such as "A or B" are a conflict only in an already
+    # explicit answer statement; they are never harvested from ordinary prose.
+    labels.extend(
+        label.lower()
+        for label in re.findall(
+            r"(?i)(?:\b(?:and|or|ou|et|oder)\b|[、,/]|或|または)\s*\(?([a-z])",
+            span,
+        )
+    )
+    leading = _leading_label(span)
+    if leading is not None:
+        labels.append(leading)
+    if labels:
+        if any(label not in "ab" for label in labels) or len(set(labels)) != 1:
+            return True, None
+        return True, ord(labels[0]) - ord("a")
+    return _option_value(span, choices)
+
+
+def _line_start_choice(line: str) -> tuple[bool, int | None]:
+    """Recognize XFANToM's listed first-line formats, including invalid labels."""
+    match = re.match(
+        r"(?i)^\s*(?:\(\s*([a-z])\s*\)|([a-z])\s*[).:])", line
+    )
+    if match:
+        labels = _marked_labels(line)
+        if any(label not in "ab" for label in labels) or len(set(labels)) != 1:
+            return True, None
+        label = labels[0]
+        return True, ord(label) - ord("a")
+    match = re.fullmatch(r"(?i)\s*([a-z])\s*", line)
+    if match:
+        label = match.group(1).lower()
+        return True, ord(label) - ord("a") if label in "ab" else None
+    return False, None
+
+
+def _extract_xfantom(text: str, choices: list[str]) -> int | None:
+    """Conservative XFANToM parser with answer-cue, label, then value precedence."""
+    cleaned = _clean_response(text)
+    explicit = [
+        choice
+        for span in _answer_spans(cleaned)
+        for found, choice in (_choice_from_answer_span(span, choices),)
+        if found
+    ]
+    if explicit:
+        # A later explicit final answer overrides an earlier provisional answer.
+        return explicit[-1]
+
+    for line in (line.strip() for line in cleaned.splitlines() if line.strip()):
+        found, choice = _line_start_choice(line)
+        if found:
+            return choice
+        found, choice = _option_value(line, choices)
+        if found:
+            return choice
+    return None
+
+
+def _extract_xtomi(text: str, choices: list[str]) -> int | None:
+    """XToMi retains localized option-value matching without prose-letter scans."""
+    return _extract_xfantom(text, choices)
+
+
+def _strip_leading_answer_cue(text: str) -> str:
+    match = _ANSWER_CUE_RE.match(text)
+    return text[match.end() :].strip() if match else text.strip()
+
+
+def _preference_value(value: str, language: str) -> int | None:
+    """Parse precisely one A--D label or one exact localized option value."""
+    match = re.fullmatch(r"(?i)\s*[\(\[]?\s*([a-z])\s*[\)\]]?\s*[.,:：]?\s*", value)
+    if match:
+        label = match.group(1).lower()
+        return ord(label) - ord("a") if label in "abcd" else None
+    normalized = _norm(value)
+    matches = [
+        index
+        for index, option in enumerate(_NEG_CFG[language]["option_values"])
+        if normalized == _norm(option)
+    ]
+    return matches[0] if len(matches) == 1 else None
+
+
+def _extract_xnegtom_preference(text: str, language: str) -> list[int] | None:
+    """Recover all three ordered preference slots without reading prose letters."""
+    cleaned = _strip_leading_answer_cue(_clean_response(text))
+    compact = re.fullmatch(
+        r"(?i)\s*([a-z])\s*(?:[,，、;/]|\s+)?\s*([a-z])\s*"
+        r"(?:[,，、;/]|\s+)?\s*([a-z])\s*[.!。]?\s*",
+        cleaned,
+    )
+    if compact:
+        values = [
+            ord(label.lower()) - ord("a") if label.lower() in "abcd" else None
+            for label in compact.groups()
+        ]
+        return values if all(value is not None for value in values) else None
+
+    slots: dict[int, int] = {}
+    saw_question_line = False
+    for line in cleaned.splitlines():
+        match = _QUESTION_LINE_RE.match(line)
+        if not match:
+            continue
+        saw_question_line = True
+        slot = int(match.group(1))
+        value = _preference_value(match.group(2), language)
+        if value is None or slot in slots:
+            return None
+        slots[slot] = value
+    if not saw_question_line or set(slots) != {1, 2, 3}:
         return None
-    if not letters:
+    return [slots[1], slots[2], slots[3]]
+
+
+def _extract_xnegtom_intention(text: str) -> list[int] | None:
+    """Accept only a compact explicit A--I answer set, never labels in prose."""
+    cleaned = _strip_leading_answer_cue(_clean_response(text))
+    if not re.fullmatch(
+        r"(?i)\s*(?:[\(\[]?\s*[a-i]\s*[\)\]]?\s*(?:[,，、;/]|\s+)?)+[.!。]?\s*",
+        cleaned,
+    ):
         return None
-    return [ord(letter.lower()) - ord("a") for letter in letters]
+    labels = re.findall(r"(?i)[a-i]", cleaned)
+    if not labels:
+        return None
+    values = sorted({ord(label.lower()) - ord("a") for label in labels})
+    # "No intention" is mutually exclusive with every other strategy.
+    return None if 8 in values and len(values) > 1 else values
 
 
 def _score_doc(doc, results: list[str]) -> dict:
     meta = json.loads(doc["meta"])
     raw = results[0] if results else ""
     family = meta["family"]
-    if meta["source"] in ("xfantom", "xtomi"):
-        prediction = _extract_single(raw, meta["choices"])
+    if meta["source"] == "xfantom":
+        prediction = _extract_xfantom(raw, meta["choices"])
+        valid = prediction is not None
+        correct = valid and prediction == meta["gold"]
+    elif meta["source"] == "xtomi":
+        prediction = _extract_xtomi(raw, meta["choices"])
         valid = prediction is not None
         correct = valid and prediction == meta["gold"]
     elif family in ("belief", "desire"):
-        prediction = _extract_letters(raw, "D", expected=3)
+        prediction = _extract_xnegtom_preference(raw, meta["language"])
         valid = prediction is not None
         correct = valid and prediction == meta["gold"]
     elif family == "intention":
-        extracted = _extract_letters(raw, "I")
-        prediction = sorted(set(extracted)) if extracted is not None else []
-        valid = extracted is not None
+        prediction = _extract_xnegtom_intention(raw)
+        valid = prediction is not None
+        prediction = prediction if prediction is not None else []
         correct = valid and prediction == meta["gold"]
     else:
         raise ValueError(f"unknown XToM family: {family!r}")
@@ -909,6 +1057,69 @@ for _metric in set(METRICS_XFANTOM + METRICS_XTOMI + METRICS_XNEGTOM):
         globals()[f"agg_{_metric}"] = _make_xfantom_consistency_aggregation(_metric)
     else:
         globals()[f"agg_{_metric}"] = _make_aggregation(_metric)
+
+
+def validate_xtom_parser_regressions() -> None:
+    """Model-free parser regressions, including short real-generation forms."""
+    choices = ["released correct option", "released wrong option"]
+    # Short excerpts from job 2090448, one per released XFANToM language.
+    xfantom_fixtures = {
+        "en": "(a) Person 1 and Person 2 suggested that one should be patient.",
+        "zh": "(b) 人物5认为，人物1和人物2的建议强调了耐心和理解的重要性。",
+        "de": "(b) Person 1 glaubte, dass sowohl kalkulierte als auch impulsive Risiken Wert hinzufügen.",
+        "fr": "(a) Personne 1 et Personne 2 ont suggéré qu'on devrait être patient.\n\nCette réponse est correcte.",
+        "ja": "(b) 人物5は、人物1と人物2の提案が忍耐強さの重要性を強調していると考えています。",
+    }
+    expected = {"en": 0, "zh": 1, "de": 1, "fr": 0, "ja": 1}
+    for language, response in xfantom_fixtures.items():
+        assert _extract_xfantom(response, choices) == expected[language], language
+
+    assert _extract_xfantom("La réponse correcte est (b).", choices) == 1
+    assert _extract_xfantom("(a) provisional\nFinal answer: (b)", choices) == 1
+    assert _extract_xfantom("(c) released correct option", choices) is None
+    assert _extract_xfantom("(a) or (b)", choices) is None
+    assert _extract_xfantom("This is a French prose response, not a choice.", choices) is None
+
+    assert _extract_xnegtom_preference("A\nC\nB", "en") == [0, 2, 1]
+    assert _extract_xnegtom_preference(
+        "Question 1: C\nQuestion 2: B\nQuestion 3: D", "en"
+    ) == [2, 1, 3]
+    assert _extract_xnegtom_preference("A,A,A", "en") == [0, 0, 0]
+    assert _extract_xnegtom_preference(
+        "Question 1: Not Given\nQuestion 2: Water\nQuestion 3: Food", "en"
+    ) == [0, 1, 2]
+    assert _extract_xnegtom_preference(
+        "D'après le dialogue, aucune réponse n'est donnée.", "fr"
+    ) is None
+    assert _extract_xnegtom_preference("Question 1: A\nQuestion 3: B", "en") is None
+    assert _extract_xnegtom_preference(
+        "Question 1: A\nQuestion 1: B\nQuestion 2: C\nQuestion 3: D", "en"
+    ) is None
+    assert _extract_xnegtom_preference(
+        "Question 1: A, B\nQuestion 2: C\nQuestion 3: D", "en"
+    ) is None
+
+    assert _extract_xnegtom_intention("Answer: A, C, C") == [0, 2]
+    assert _extract_xnegtom_intention("A and I") is None
+    assert _extract_xnegtom_intention("The dialogue mentions A and B.") is None
+    assert _extract_xtomi("水", ["未提供", "水"]) == 1
+
+
+def validate_xfantom_fixed_order() -> None:
+    """Assert fixed released correct-A/wrong-B order and paper family counts."""
+    docs = _build_xfantom_docs()
+    counts = {
+        language: {"fact": 0, "belief_first": 0, "belief_acyclic": 0, "belief_cyclic": 0}
+        for language in LANGUAGES
+    }
+    for doc in docs:
+        meta = json.loads(doc["meta"])
+        assert meta["gold"] == 0
+        assert doc["target"] == "(a)"
+        assert len(meta["choices"]) == 2
+        counts[meta["language"]][meta["family"]] += 1
+    expected = {"fact": 300, "belief_first": 217, "belief_acyclic": 51, "belief_cyclic": 50}
+    assert all(language_counts == expected for language_counts in counts.values())
 
 
 def validate_xfantom_consistency() -> None:

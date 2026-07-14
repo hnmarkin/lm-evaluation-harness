@@ -56,11 +56,14 @@ paper evaluator.
   released intention prompts per language. Belief/desire require the complete
   ordered three-letter answer. Intention is a multi-label A--I prediction.
 
-The conservative answer parser checks the final answer tail first, then an
-explicit answer letter, then an unambiguous option value for single-answer
-tasks. Negotiation belief/desire accept exactly three A--D letters; intention
-accepts a set of A--I letters. Reasoning text is permitted, but ambiguous or
-unparseable output is invalid rather than guessed.
+The format-specific conservative parsers retain the complete cleaned response
+block. XFANToM gives an explicit final-answer statement precedence, then accepts
+a first-line option marker or an unambiguous displayed option value. XToMi keeps
+its localized option-value matching on the retained response. Negotiation
+preference accepts only one compact ordered A--D triplet, three bare answer
+lines, or three explicitly numbered answer lines; intention accepts only a
+compact explicit A--I set. Reasoning text is never scanned for isolated letters,
+and ambiguous or unparseable output is invalid rather than guessed.
 
 ## Run Qwen-2.5-7B-Instruct
 
@@ -110,10 +113,10 @@ cannot be established:
 1. **Output extraction.** The paper specifies requested answer forms but does
    not publish the parser. The conservative parser above is a reconstruction;
    `invalid_rate` makes its impact visible.
-2. **XFANToM option ordering.** The XToM data contains correct/wrong answer
-   fields but no displayed order. This adapter reuses FANToM's deterministic
-   seed-99 binary shuffle independently for each language. This affects letter
-   placement, not option-value scoring or denominators.
+2. **XFANToM option ordering.** The released fields are shown in fixed order:
+   `(a) correct_answer`, `(b) wrong_answer`. XToM releases neither an evaluator
+   nor an option-shuffling procedure, so every XFANToM gold is `(a)` and all five
+   language versions retain aligned option positions.
 3. **Generation length and stop strings.** The paper reports temperature and
    top-p but not an exact generation cap or evaluator stop list. The adapter
    uses 256/1,024 tokens and Qwen EOS markers. Typography and line wrapping
@@ -141,8 +144,13 @@ remain out of scope.
 
 The implementation checks exact language/family counts while loading, including
 300 complete FactQA and 318 complete BeliefQA five-language XFANToM groups with
-aligned displayed gold positions. Local verification covers Python compilation,
-all-valid and all-invalid full-corpus metric invariants, `lm-eval validate`, and
-a dummy-model generation/scoring run. A real Qwen-2.5-7B smoke and the six full
-jobs remain cluster runs because the model does not fit the development
+fixed correct-A positions. `validate_xtom_parser_regressions()` covers the
+format-specific parser rules and short real-generation forms in all five
+languages; `validate_xfantom_fixed_order()` verifies all 3,090 XFANToM documents
+and their paper family splits. Local verification also covers Python
+compilation, all-valid and all-invalid full-corpus metric invariants, `lm-eval
+validate`, and a dummy-model generation/scoring run. Re-score the saved
+Negotiation samples after parser changes; rerun both direct and CoT XFANToM
+leaves before reporting fixed-order results. A real Qwen-2.5-7B smoke and the
+six full jobs remain cluster runs because the model does not fit the development
 machine's available GPU memory.
