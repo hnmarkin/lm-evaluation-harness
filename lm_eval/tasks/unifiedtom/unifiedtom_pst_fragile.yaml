@@ -1,7 +1,0 @@
-include: _unifiedtom_fragile_template_yaml
-task: unifiedtom_pst_fragile
-task_alias: UnifiedToM PST fragile
-tag: [theory_of_mind]
-dataset_kwargs:
-  subset: pst
-  fragile: true

@@ -1,7 +1,0 @@
-include: _unifiedtom_fragile_template_yaml
-task: unifiedtom_sit_fragile
-task_alias: UnifiedToM SIT fragile
-tag: [theory_of_mind]
-dataset_kwargs:
-  subset: sit
-  fragile: true

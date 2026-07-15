@@ -1,7 +1,0 @@
-include: _unifiedtom_fragile_template_yaml
-task: unifiedtom_evolving_stories_fragile
-task_alias: UnifiedToM Evolving Stories fragile
-tag: [theory_of_mind]
-dataset_kwargs:
-  subset: evolving_stories
-  fragile: true

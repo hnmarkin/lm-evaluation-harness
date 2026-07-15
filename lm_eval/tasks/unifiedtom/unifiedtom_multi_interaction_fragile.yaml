@@ -1,7 +1,0 @@
-include: _unifiedtom_fragile_template_yaml
-task: unifiedtom_multi_interaction_fragile
-task_alias: UnifiedToM Multi-Interaction fragile
-tag: [theory_of_mind]
-dataset_kwargs:
-  subset: multi_interaction
-  fragile: true

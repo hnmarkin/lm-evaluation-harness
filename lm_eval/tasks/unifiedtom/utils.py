@@ -181,21 +181,6 @@ def _format_tombench_prompt(story, question, choices):
     )
 
 
-def _format_tombench_prompt_fragile(story, question, raw_choices):
-    # Paper/tom.py-faithful rendering: always four options, literal "nan" for a missing
-    # choice (pandas f-strings float NaN that way), no dropping of empty C/D. This is the
-    # unifiedtom_fragile variant's undoing of the base adapter's deviation #3.
-    parts = [
-        f"Option {letter}: {choice if choice else 'nan'}"
-        for letter, choice in zip("ABCD", raw_choices)
-    ]
-    options = ", ".join(parts)
-    return (
-        f"Story: {story}.  Question: {question}. {options}. "
-        "reply only with the option. for ex: D"
-    )
-
-
 def _parse_custom_options(raw_options):
     try:
         parsed = ast.literal_eval(raw_options)
@@ -265,7 +250,7 @@ def _collapse_custom_prompt_duplicates(docs):
     return list(by_prompt.values())
 
 
-def _load_tombench_subset(subset, fragile=False):
+def _load_tombench_subset(subset):
     sheet_name, display_name = TOMBENCH_SHEETS[subset]
     path = _benchmark_dir() / "datasets" / "ToMBench_release_v1_0618.xlsx"
     docs = []
@@ -279,12 +264,8 @@ def _load_tombench_subset(subset, fragile=False):
         gold = _gold_letter(_first(row, *_ANSWER_KEYS))
         if "ABCD".index(gold) >= len(present):
             raise ValueError(f"{sheet_name} row {row_idx} gold {gold} is outside choices")
-        if fragile:
-            prompt = _format_tombench_prompt_fragile(story, question, raw_choices)
-            arity = 4
-        else:
-            prompt = _format_tombench_prompt(story, question, present)
-            arity = len(present)
+        prompt = _format_tombench_prompt(story, question, present)
+        arity = len(present)
         docs.append(
             {
                 "id": f"{subset}:{row_idx}",
@@ -302,11 +283,7 @@ def _load_tombench_subset(subset, fragile=False):
     return docs
 
 
-def _load_custom_subset(subset, fragile=False):
-    # `fragile` is accepted for a uniform loader signature but does not change the custom
-    # prompt: the evolving-stories / multi-interaction files have no missing-option "nan"
-    # rows. Only the scorer (process_results_fragile) differs for these leaves.
-    del fragile
+def _load_custom_subset(subset):
     filename, display_name = CUSTOM_FILES[subset]
     path = _benchmark_dir() / "datasets" / filename
     docs = []
@@ -339,7 +316,7 @@ def _load_custom_subset(subset, fragile=False):
     return _collapse_custom_prompt_duplicates(docs)
 
 
-def load(subset="all", fragile=False, **kwargs):
+def load(subset="all", **kwargs):
     if subset == "all":
         subsets = SUBSET_ORDER
     else:
@@ -347,14 +324,14 @@ def load(subset="all", fragile=False, **kwargs):
             raise ValueError(f"unknown UnifiedToM subset {subset!r}")
         subsets = (subset,)
 
-    cache_key = (tuple(subsets), bool(fragile))
+    cache_key = tuple(subsets)
     if cache_key not in _CACHE:
         docs = []
         for name in subsets:
             if name in TOMBENCH_SHEETS:
-                docs.extend(_load_tombench_subset(name, fragile=fragile))
+                docs.extend(_load_tombench_subset(name))
             else:
-                docs.extend(_load_custom_subset(name, fragile=fragile))
+                docs.extend(_load_custom_subset(name))
         _CACHE[cache_key] = datasets.Dataset.from_list(docs)
     return {"train": _CACHE[cache_key]}
 
@@ -363,14 +340,4 @@ def process_results(doc, results):
     # The source scripts use exact string equality with only light strip/case/dot
     # variants. Do not regex-extract letters out of verbose answers here.
     response = str(results[0]).strip().replace(".", "").upper()
-    return {"acc": 1.0 if response == doc["target"] else 0.0}
-
-
-def process_results_fragile(doc, results):
-    # Fragile / paper-faithful scorer for the unifiedtom_fragile variant: strip only,
-    # matching custom_data.py's `response.strip() == ans`. Unlike process_results it does
-    # NOT uppercase or remove dots, so it reproduces the paper's exact-match sensitivity to
-    # casing, trailing punctuation, and verbose answers. Strip (rather than tom.py's bare
-    # ==) avoids a local-only leading-space artifact, isolating format fragility.
-    response = str(results[0]).strip()
     return {"acc": 1.0 if response == doc["target"] else 0.0}

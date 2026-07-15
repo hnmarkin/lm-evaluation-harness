@@ -101,25 +101,44 @@ self-contained.
    last duplicated row's gold answer, matching Python dictionary assignment;
    source-row metadata records the first and last rows for auditability.
 
-## Paper-fragile variant (`unifiedtom_fragile`)
+## Retired experiment: paper-fragile variant (removed 2026-07-15)
 
-`unifiedtom_fragile` is a companion group (10 `*_fragile` leaves) that deliberately
-*undoes* the two adapter choices which make the headline task diverge from the paper's
-Table 1, so a run measures what the paper actually measured:
+A companion group `unifiedtom_fragile` (10 `*_fragile` leaves) previously lived in this
+directory to test whether two adapter choices explain a gap between this adapter and
+UniToMBench Table 1's reported baseline, measured on Llama-3-8B-Instruct:
 
-1. **`nan` options restored.** Missing Strange-Story / Faux-pas C/D options are rendered
-   as the literal `Option C: nan, Option D: nan` (exactly as `tom.py`'s pandas f-string
-   does), instead of being dropped (deviation #3). Every row becomes four-option.
-2. **Strict scorer.** `process_results_fragile` compares `response.strip() == target`
-   with no uppercasing or dot-removal, reproducing the paper's exact-match sensitivity to
-   casing, trailing punctuation, and verbose answers. (`strip` — vs `tom.py`'s bare `==` —
-   only removes a local leading/trailing-whitespace artifact, so it isolates format
-   fragility rather than a tokenizer quirk.)
+1. **`nan` options restored.** Missing Strange-Story / Faux-pas C/D options rendered as
+   the literal `Option C: nan, Option D: nan` (exactly as `tom.py`'s pandas f-string
+   does), instead of being dropped (deviation #3 above). Every row became four-option.
+2. **Strict scorer.** A `process_results_fragile` that compared `response.strip() ==
+   target` with no uppercasing or dot-removal, reproducing the paper's exact-match
+   sensitivity to casing, trailing punctuation, and verbose answers.
 
 Everything else (prompt wording, system message, `temperature: 0.7`, `max_gen_toks: 32`)
-is identical to the headline task, so `unifiedtom` vs `unifiedtom_fragile` isolates the
-effect of those two deviations against the paper's baseline. Run it the same way, swapping
-the task name; use `--apply_chat_template` for chat models as with the headline task.
+was identical to the headline task, isolating the effect of just those two deviations.
+
+**What it found:** reversing both deviations left scores essentially unchanged (macro
+64.8% fragile vs. 64.9% base, vs. the paper's 56.9%) — full table in
+`proofs/unifiedtom/unifiedtom_lmeval_vs_paper.md`. The two leaves most suspected of being
+inflated by dropping empty options (`frt`, `sst`) barely moved (67.9→67.5, 77.4→75.7): a
+competent instruct model ignores injected `nan` text either way.
+
+**Verdict, corrected 2026-07-14** (`proofs/unifiedtom/2026-07-14-faithfulness-correction.md`):
+the original writeup overstated this as "the gap is not an adapter-faithfulness problem."
+A re-audit found the comparable scope is narrower than all 10 leaves — the paper's PST
+cell uses only the 76 released rows tagged `Desire: Desires influence on actions`, not
+all 100, and the paper's two custom corpora have 525/500 items of which only 250/97 were
+ever released — and the paper's exact serving stack ("Llama 3 8B Instruct Turbo") is not
+definitively identified, so the local BF16 checkpoint is a proxy, not "the paper's own
+model." The supportable conclusion is only that NaN-rendering and scorer-normalization
+are ruled out as causes of the *local-model* gaps on the leaves where paper/local scope
+actually match (SIT, PST-76, HT) — not that the full paper-reproduction gap is explained.
+Verdict: **inconclusive paper reproduction**, not "adapter deviations cleared."
+
+The `unifiedtom_fragile` group/leaves and their `utils.py` functions
+(`_format_tombench_prompt_fragile`, `process_results_fragile`) were deleted once this
+conclusion was reached; the code remains recoverable from git history if the ablation
+needs to be rerun (e.g. against a real paper-identified serving stack).
 
 ## Verification
 
