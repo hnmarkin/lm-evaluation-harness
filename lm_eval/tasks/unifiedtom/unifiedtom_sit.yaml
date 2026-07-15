@@ -1,0 +1,7 @@
+include: _unifiedtom_template_yaml
+task: unifiedtom_sit
+task_alias: UnifiedToM SIT direct
+tag: [theory_of_mind]
+dataset_kwargs:
+  subset: sit
+

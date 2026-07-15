@@ -1,0 +1,11 @@
+group: unifiedtom_custom
+group_alias: "UnifiedToM custom - derived macro (non-paper)"
+task:
+  - unifiedtom_evolving_stories
+  - unifiedtom_multi_interaction
+aggregate_metric_list:
+  - metric: acc
+    aggregation: mean
+    weight_by_size: false
+metadata:
+  version: 1

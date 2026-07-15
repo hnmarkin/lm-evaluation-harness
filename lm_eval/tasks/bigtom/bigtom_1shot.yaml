@@ -1,0 +1,31 @@
+group: bigtom_1shot
+tag: [theory_of_mind]
+task:
+  - bigtom_1shot_backward_belief
+  - bigtom_1shot_forward_action
+  - bigtom_1shot_forward_belief
+aggregate_metric_list:
+  - {metric: acc, aggregation: mean, weight_by_size: false}
+  - {metric: error_rate, aggregation: mean, weight_by_size: false}
+  - {metric: acc_0_true_belief, aggregation: mean, weight_by_size: false}
+  - {metric: acc_0_false_belief, aggregation: mean, weight_by_size: false}
+  - {metric: acc_0_true_control, aggregation: mean, weight_by_size: false}
+  - {metric: acc_0_false_control, aggregation: mean, weight_by_size: false}
+  - {metric: acc_1_true_belief, aggregation: mean, weight_by_size: false}
+  - {metric: acc_1_false_belief, aggregation: mean, weight_by_size: false}
+  - {metric: acc_1_true_control, aggregation: mean, weight_by_size: false}
+  - {metric: acc_1_false_control, aggregation: mean, weight_by_size: false}
+  - {metric: error_rate_0_true_belief, aggregation: mean, weight_by_size: false}
+  - {metric: error_rate_0_false_belief, aggregation: mean, weight_by_size: false}
+  - {metric: error_rate_0_true_control, aggregation: mean, weight_by_size: false}
+  - {metric: error_rate_0_false_control, aggregation: mean, weight_by_size: false}
+  - {metric: error_rate_1_true_belief, aggregation: mean, weight_by_size: false}
+  - {metric: error_rate_1_false_belief, aggregation: mean, weight_by_size: false}
+  - {metric: error_rate_1_true_control, aggregation: mean, weight_by_size: false}
+  - {metric: error_rate_1_false_control, aggregation: mean, weight_by_size: false}
+  - {metric: tb_fb_acc_0_belief, aggregation: mean, weight_by_size: false}
+  - {metric: tb_fb_acc_0_control, aggregation: mean, weight_by_size: false}
+  - {metric: tb_fb_acc_1_belief, aggregation: mean, weight_by_size: false}
+  - {metric: tb_fb_acc_1_control, aggregation: mean, weight_by_size: false}
+metadata:
+  version: 0

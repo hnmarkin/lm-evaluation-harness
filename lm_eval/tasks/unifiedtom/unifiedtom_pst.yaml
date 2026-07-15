@@ -1,0 +1,7 @@
+include: _unifiedtom_template_yaml
+task: unifiedtom_pst
+task_alias: UnifiedToM PST direct
+tag: [theory_of_mind]
+dataset_kwargs:
+  subset: pst
+

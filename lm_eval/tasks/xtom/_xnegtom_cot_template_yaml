@@ -1,0 +1,94 @@
+custom_dataset: !function utils.load_xnegtom
+test_split: train
+output_type: generate_until
+doc_to_text: !function utils.doc_to_text_cot
+doc_to_target: "{{target}}"
+process_results: !function utils.process_results_xnegtom
+generation_kwargs:
+  # Qwen-2.5-7B-Instruct settings reported in XToM Appendix C.1.
+  do_sample: true
+  temperature: 0.5
+  top_p: 0.7
+  max_gen_toks: 1024
+  until:
+    - "</s>"
+    - "<|im_end|>"
+metric_list:
+  - metric: en_belief_exact_match
+    aggregation: !function utils.agg_en_belief_exact_match
+    higher_is_better: true
+  - metric: en_desire_exact_match
+    aggregation: !function utils.agg_en_desire_exact_match
+    higher_is_better: true
+  - metric: en_intention_micro_f1
+    aggregation: !function utils.agg_en_intention_micro_f1
+    higher_is_better: true
+  - metric: en_intention_macro_f1
+    aggregation: !function utils.agg_en_intention_macro_f1
+    higher_is_better: true
+  - metric: en_invalid_rate
+    aggregation: !function utils.agg_en_invalid_rate
+    higher_is_better: false
+  - metric: zh_belief_exact_match
+    aggregation: !function utils.agg_zh_belief_exact_match
+    higher_is_better: true
+  - metric: zh_desire_exact_match
+    aggregation: !function utils.agg_zh_desire_exact_match
+    higher_is_better: true
+  - metric: zh_intention_micro_f1
+    aggregation: !function utils.agg_zh_intention_micro_f1
+    higher_is_better: true
+  - metric: zh_intention_macro_f1
+    aggregation: !function utils.agg_zh_intention_macro_f1
+    higher_is_better: true
+  - metric: zh_invalid_rate
+    aggregation: !function utils.agg_zh_invalid_rate
+    higher_is_better: false
+  - metric: de_belief_exact_match
+    aggregation: !function utils.agg_de_belief_exact_match
+    higher_is_better: true
+  - metric: de_desire_exact_match
+    aggregation: !function utils.agg_de_desire_exact_match
+    higher_is_better: true
+  - metric: de_intention_micro_f1
+    aggregation: !function utils.agg_de_intention_micro_f1
+    higher_is_better: true
+  - metric: de_intention_macro_f1
+    aggregation: !function utils.agg_de_intention_macro_f1
+    higher_is_better: true
+  - metric: de_invalid_rate
+    aggregation: !function utils.agg_de_invalid_rate
+    higher_is_better: false
+  - metric: fr_belief_exact_match
+    aggregation: !function utils.agg_fr_belief_exact_match
+    higher_is_better: true
+  - metric: fr_desire_exact_match
+    aggregation: !function utils.agg_fr_desire_exact_match
+    higher_is_better: true
+  - metric: fr_intention_micro_f1
+    aggregation: !function utils.agg_fr_intention_micro_f1
+    higher_is_better: true
+  - metric: fr_intention_macro_f1
+    aggregation: !function utils.agg_fr_intention_macro_f1
+    higher_is_better: true
+  - metric: fr_invalid_rate
+    aggregation: !function utils.agg_fr_invalid_rate
+    higher_is_better: false
+  - metric: ja_belief_exact_match
+    aggregation: !function utils.agg_ja_belief_exact_match
+    higher_is_better: true
+  - metric: ja_desire_exact_match
+    aggregation: !function utils.agg_ja_desire_exact_match
+    higher_is_better: true
+  - metric: ja_intention_micro_f1
+    aggregation: !function utils.agg_ja_intention_micro_f1
+    higher_is_better: true
+  - metric: ja_intention_macro_f1
+    aggregation: !function utils.agg_ja_intention_macro_f1
+    higher_is_better: true
+  - metric: ja_invalid_rate
+    aggregation: !function utils.agg_ja_invalid_rate
+    higher_is_better: false
+metadata:
+  version: 0
+

@@ -1,0 +1,22 @@
+include: _tombench_template_yaml
+task: tombench_en
+tag: [tombench, theory_of_mind]
+# System prompt, verbatim from prompts.py::SystemEvaluatePrompt_en
+# (paper Table 20). Rendered as a real system turn ONLY under --apply_chat_template.
+description: |-
+  Below is a multiple-choice question with a story and serveral answer options. Based on the content of the story and the given question, please infer the most likely answer and output the answer index.
+  Note:
+  (1) Please only output the most likely answer index in the format: [[Answer Index]], for example, if the most likely answer option is 'A. Handbag', then output '[[A]]';
+  (2) You must choose one of the given answer options 'A, B, C, D' as the most likely answer, regardless of whether the story provides enough information. If you think there is not enough information in the story to choose an answer, please randomly output one of "[[A]]", "[[B]]", "[[C]]", or "[[D]]";
+  (3) Please only output the most likely answer index based on the given information, and do not output any other content.
+dataset_kwargs:
+  language: en
+  try_times: 1          # paper Sec. 4.1: shuffle option order 5x, majority-vote
+  fix_gold_typo: true
+generation_kwargs:
+  # run_huggingface.py: {"max_length": 4096, "do_sample": False, "top_k": 1} -- greedy, no
+  # stop sequence, answer effectively uncapped. Only EOS markers are used as `until` here.
+  until: ["</s>", "<|im_end|>"]
+  do_sample: false
+  temperature: 0.0
+  max_gen_toks: 512

@@ -1,0 +1,3 @@
+include: _simpletom_cot_template_yaml
+task: simpletom_cot_action
+dataset_name: behavior-qa

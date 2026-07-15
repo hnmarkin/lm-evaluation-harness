@@ -1,0 +1,4 @@
+include: _xfantom_template_yaml
+task: xtom_xfantom
+tag: [theory_of_mind, xtom]
+

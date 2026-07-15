@@ -1,0 +1,94 @@
+custom_dataset: !function utils.load_xtomi
+test_split: train
+output_type: generate_until
+doc_to_text: !function utils.doc_to_text
+doc_to_target: "{{target}}"
+process_results: !function utils.process_results_xtomi
+generation_kwargs:
+  # Qwen-2.5-7B-Instruct settings reported in XToM Appendix C.1.
+  do_sample: true
+  temperature: 0.5
+  top_p: 0.7
+  max_gen_toks: 256
+  until:
+    - "</s>"
+    - "<|im_end|>"
+metric_list:
+  - metric: en_first_order_acc
+    aggregation: !function utils.agg_en_first_order_acc
+    higher_is_better: true
+  - metric: en_second_order_acc
+    aggregation: !function utils.agg_en_second_order_acc
+    higher_is_better: true
+  - metric: en_belief_acc
+    aggregation: !function utils.agg_en_belief_acc
+    higher_is_better: true
+  - metric: en_reality_acc
+    aggregation: !function utils.agg_en_reality_acc
+    higher_is_better: true
+  - metric: en_invalid_rate
+    aggregation: !function utils.agg_en_invalid_rate
+    higher_is_better: false
+  - metric: zh_first_order_acc
+    aggregation: !function utils.agg_zh_first_order_acc
+    higher_is_better: true
+  - metric: zh_second_order_acc
+    aggregation: !function utils.agg_zh_second_order_acc
+    higher_is_better: true
+  - metric: zh_belief_acc
+    aggregation: !function utils.agg_zh_belief_acc
+    higher_is_better: true
+  - metric: zh_reality_acc
+    aggregation: !function utils.agg_zh_reality_acc
+    higher_is_better: true
+  - metric: zh_invalid_rate
+    aggregation: !function utils.agg_zh_invalid_rate
+    higher_is_better: false
+  - metric: de_first_order_acc
+    aggregation: !function utils.agg_de_first_order_acc
+    higher_is_better: true
+  - metric: de_second_order_acc
+    aggregation: !function utils.agg_de_second_order_acc
+    higher_is_better: true
+  - metric: de_belief_acc
+    aggregation: !function utils.agg_de_belief_acc
+    higher_is_better: true
+  - metric: de_reality_acc
+    aggregation: !function utils.agg_de_reality_acc
+    higher_is_better: true
+  - metric: de_invalid_rate
+    aggregation: !function utils.agg_de_invalid_rate
+    higher_is_better: false
+  - metric: fr_first_order_acc
+    aggregation: !function utils.agg_fr_first_order_acc
+    higher_is_better: true
+  - metric: fr_second_order_acc
+    aggregation: !function utils.agg_fr_second_order_acc
+    higher_is_better: true
+  - metric: fr_belief_acc
+    aggregation: !function utils.agg_fr_belief_acc
+    higher_is_better: true
+  - metric: fr_reality_acc
+    aggregation: !function utils.agg_fr_reality_acc
+    higher_is_better: true
+  - metric: fr_invalid_rate
+    aggregation: !function utils.agg_fr_invalid_rate
+    higher_is_better: false
+  - metric: ja_first_order_acc
+    aggregation: !function utils.agg_ja_first_order_acc
+    higher_is_better: true
+  - metric: ja_second_order_acc
+    aggregation: !function utils.agg_ja_second_order_acc
+    higher_is_better: true
+  - metric: ja_belief_acc
+    aggregation: !function utils.agg_ja_belief_acc
+    higher_is_better: true
+  - metric: ja_reality_acc
+    aggregation: !function utils.agg_ja_reality_acc
+    higher_is_better: true
+  - metric: ja_invalid_rate
+    aggregation: !function utils.agg_ja_invalid_rate
+    higher_is_better: false
+metadata:
+  version: 0
+

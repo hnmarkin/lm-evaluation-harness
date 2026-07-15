@@ -1,0 +1,96 @@
+custom_dataset: !function utils.load_variable
+test_split: train
+output_type: generate_until
+# Shared by all 4 prompting variants: the user turn is identical between vanilla and
+# CoT (only the system `description` and process_results differ) -- verbatim from
+# evaluate_llm.py's chat prompt: "Story: {story}\nQuestion: {question}".
+doc_to_text: "Story: {{story}}\nQuestion: {{question_with_choices}}"
+doc_to_target: "{{answer_target}}"
+process_results: !function utils.process_results_variable_vanilla
+# System instruction, transcribed verbatim from
+# code/prompt_instructions/evaluate.txt. Under --apply_chat_template this becomes a
+# real system turn; without it, lm-eval prepends it as text.
+description: |-
+  Answer the questions based on the context. Keep your answer concise, few words are enough, maximum one sentence. Answer as 'Answer:<option>)<answer>'.
+# No "\n\n" stop and a generous max_gen_toks: reasoning-capable chat models
+# (Qwen3, DeepSeek-R1, ...) prepend a <think> block by default even for this
+# "keep it concise" instruction -- a "\n\n" stop or a paper-sized 20-25 token
+# budget truncates mid-think before the model ever reaches "Answer:", inflating
+# error_rate for reasons that look like a model failure rather than a config
+# issue (see utils._strip_thinking).
+generation_kwargs:
+  until:
+    - "</s>"
+    - "<|im_end|>"
+  do_sample: false
+  temperature: 0.0
+  max_gen_toks: 1024
+metric_list:
+  - metric: acc
+    aggregation: mean
+    higher_is_better: true
+  - metric: error_rate
+    aggregation: mean
+    higher_is_better: false
+  - metric: acc_0_true_belief
+    aggregation: mean
+    higher_is_better: true
+  - metric: acc_0_false_belief
+    aggregation: mean
+    higher_is_better: true
+  - metric: acc_0_true_control
+    aggregation: mean
+    higher_is_better: true
+  - metric: acc_0_false_control
+    aggregation: mean
+    higher_is_better: true
+  - metric: acc_1_true_belief
+    aggregation: mean
+    higher_is_better: true
+  - metric: acc_1_false_belief
+    aggregation: mean
+    higher_is_better: true
+  - metric: acc_1_true_control
+    aggregation: mean
+    higher_is_better: true
+  - metric: acc_1_false_control
+    aggregation: mean
+    higher_is_better: true
+  - metric: error_rate_0_true_belief
+    aggregation: mean
+    higher_is_better: false
+  - metric: error_rate_0_false_belief
+    aggregation: mean
+    higher_is_better: false
+  - metric: error_rate_0_true_control
+    aggregation: mean
+    higher_is_better: false
+  - metric: error_rate_0_false_control
+    aggregation: mean
+    higher_is_better: false
+  - metric: error_rate_1_true_belief
+    aggregation: mean
+    higher_is_better: false
+  - metric: error_rate_1_false_belief
+    aggregation: mean
+    higher_is_better: false
+  - metric: error_rate_1_true_control
+    aggregation: mean
+    higher_is_better: false
+  - metric: error_rate_1_false_control
+    aggregation: mean
+    higher_is_better: false
+  - metric: tb_fb_acc_0_belief
+    aggregation: !function utils.agg_tb_fb_acc
+    higher_is_better: true
+  - metric: tb_fb_acc_0_control
+    aggregation: !function utils.agg_tb_fb_acc
+    higher_is_better: true
+  - metric: tb_fb_acc_1_belief
+    aggregation: !function utils.agg_tb_fb_acc
+    higher_is_better: true
+  - metric: tb_fb_acc_1_control
+    aggregation: !function utils.agg_tb_fb_acc
+    higher_is_better: true
+metadata:
+  version: 0

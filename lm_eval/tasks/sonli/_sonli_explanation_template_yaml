@@ -1,0 +1,19 @@
+custom_dataset: !function utils.load
+test_split: train
+output_type: generate_until
+doc_to_target: "{{target}}"
+process_results: !function utils.process_results_explanation
+generation_kwargs:
+  # experiment_one.py uses TEMPERATURE=0.7 and MAX_TOKENS=5000 for explanation
+  # generation. Stop only on model/chat EOS; the answer can include newlines.
+  until:
+    - "</s>"
+    - "<|im_end|>"
+  do_sample: true
+  temperature: 0.7
+  max_gen_toks: 5000
+metric_list:
+  - {metric: nonempty_rate, aggregation: mean, higher_is_better: true}
+metadata:
+  version: 0
+

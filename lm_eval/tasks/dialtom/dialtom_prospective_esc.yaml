@@ -1,0 +1,4 @@
+include: _dialtom_prospective_template_yaml
+task: dialtom_prospective_esc
+dataset_kwargs:
+  domain: ESC

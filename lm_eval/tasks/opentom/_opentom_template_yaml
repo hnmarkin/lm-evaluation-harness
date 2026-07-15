@@ -1,0 +1,35 @@
+custom_dataset: !function utils.load
+test_split: train
+output_type: generate_until
+doc_to_text: !function utils.doc_to_text
+doc_to_target: "{{answer}}"          # logging only; scoring lives in process_results
+process_results: !function utils.process_results
+generation_kwargs:
+  # OpenToM open-model runs stop at BOTH "\n" and "\n\n" (run_baseline.py, llama/
+  # mixtral branch); GPT runs greedy (temperature=0). We match the open-model stop
+  # set exactly — a lone "\n" matters: a multi-line answer would otherwise reach the
+  # substring extractors whole and mis-fire (e.g. "now" contains "no").
+  until:
+    - "</s>"
+    - "<|im_end|>"
+    - "\n\n"
+    - "\n"
+  do_sample: false
+  temperature: 0.0
+  max_gen_toks: 128
+# Metrics are computed by custom !function aggregations that consume the whole
+# (gold,pred,batch) list (the FANToM pattern). Following evaluate.py, each metric is
+# the MEAN of PER-BATCH macro-F1 / accuracy over the 5 seed-42 batches of 50
+# narratives (`*_std` = the matching population std, evaluate.py's "Variance").
+# `macro_f1`/`acc` drop corrupted preds per batch (paper-faithful); `*_strict` count
+# them wrong; `corrupt_rate` = mean per-batch dropped fraction (lower is better).
+metric_list:
+  - {metric: macro_f1,        aggregation: !function utils.agg_macro_f1,        higher_is_better: true}
+  - {metric: macro_f1_std,    aggregation: !function utils.agg_macro_f1_std,    higher_is_better: false}
+  - {metric: macro_f1_strict, aggregation: !function utils.agg_macro_f1_strict, higher_is_better: true}
+  - {metric: acc,             aggregation: !function utils.agg_acc,             higher_is_better: true}
+  - {metric: acc_std,         aggregation: !function utils.agg_acc_std,         higher_is_better: false}
+  - {metric: acc_strict,      aggregation: !function utils.agg_acc_strict,      higher_is_better: true}
+  - {metric: corrupt_rate,    aggregation: !function utils.agg_corrupt_rate,    higher_is_better: false}
+metadata:
+  version: 0

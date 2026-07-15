@@ -1,0 +1,7 @@
+include: _opentom_template_yaml
+task: opentom_location_cg_so
+tag: [theory_of_mind, opentom]
+dataset_kwargs:
+  genre: location
+  granularity: coarse
+  order: so

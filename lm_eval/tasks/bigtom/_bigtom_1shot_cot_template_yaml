@@ -1,0 +1,90 @@
+custom_dataset: !function utils.load_variable
+test_split: train
+output_type: generate_until
+doc_to_text: "Story: {{story}}\nQuestion: {{question_with_choices}}"
+doc_to_target: "{{answer_target}}"
+process_results: !function utils.process_results_variable_cot
+description: |-
+  Answer the questions based on the context. Reason step by step before answering in 'Thought: Let's think step by step'. Write your final answer as 'Answer:<option>)<answer>'. Always pick an option, do not say none of the above or that there is not enough information.
+# Fixed one-shot CoT exemplar (evaluate_llm.py's ONE_SHOT_CHAT_COT: the same
+# Kofi/fishing-net item, with its hardcoded "Thought: ...\nAnswer: ..." response).
+num_fewshot: 1
+fewshot_config:
+  sampler: first_n
+  samples: !function utils.list_fewshot_samples_cot
+generation_kwargs:
+  until:
+    - "</s>"
+    - "<|im_end|>"
+  do_sample: false
+  temperature: 0.0
+  max_gen_toks: 1024
+metric_list:
+  - metric: acc
+    aggregation: mean
+    higher_is_better: true
+  - metric: error_rate
+    aggregation: mean
+    higher_is_better: false
+  - metric: acc_0_true_belief
+    aggregation: mean
+    higher_is_better: true
+  - metric: acc_0_false_belief
+    aggregation: mean
+    higher_is_better: true
+  - metric: acc_0_true_control
+    aggregation: mean
+    higher_is_better: true
+  - metric: acc_0_false_control
+    aggregation: mean
+    higher_is_better: true
+  - metric: acc_1_true_belief
+    aggregation: mean
+    higher_is_better: true
+  - metric: acc_1_false_belief
+    aggregation: mean
+    higher_is_better: true
+  - metric: acc_1_true_control
+    aggregation: mean
+    higher_is_better: true
+  - metric: acc_1_false_control
+    aggregation: mean
+    higher_is_better: true
+  - metric: error_rate_0_true_belief
+    aggregation: mean
+    higher_is_better: false
+  - metric: error_rate_0_false_belief
+    aggregation: mean
+    higher_is_better: false
+  - metric: error_rate_0_true_control
+    aggregation: mean
+    higher_is_better: false
+  - metric: error_rate_0_false_control
+    aggregation: mean
+    higher_is_better: false
+  - metric: error_rate_1_true_belief
+    aggregation: mean
+    higher_is_better: false
+  - metric: error_rate_1_false_belief
+    aggregation: mean
+    higher_is_better: false
+  - metric: error_rate_1_true_control
+    aggregation: mean
+    higher_is_better: false
+  - metric: error_rate_1_false_control
+    aggregation: mean
+    higher_is_better: false
+  - metric: tb_fb_acc_0_belief
+    aggregation: !function utils.agg_tb_fb_acc
+    higher_is_better: true
+  - metric: tb_fb_acc_0_control
+    aggregation: !function utils.agg_tb_fb_acc
+    higher_is_better: true
+  - metric: tb_fb_acc_1_belief
+    aggregation: !function utils.agg_tb_fb_acc
+    higher_is_better: true
+  - metric: tb_fb_acc_1_control
+    aggregation: !function utils.agg_tb_fb_acc
+    higher_is_better: true
+metadata:
+  version: 0

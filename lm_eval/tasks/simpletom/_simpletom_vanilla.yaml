@@ -1,0 +1,17 @@
+group: simpletom_vanilla
+task:
+  - simpletom_vanilla_aware
+  - simpletom_vanilla_action
+  - simpletom_vanilla_judge
+aggregate_metric_list:
+  - metric: acc
+    aggregation: mean
+    weight_by_size: true
+  - metric: na_frac
+    aggregation: mean
+    weight_by_size: true
+  - metric: truncated_think_frac
+    aggregation: mean
+    weight_by_size: true
+metadata:
+  version: 1

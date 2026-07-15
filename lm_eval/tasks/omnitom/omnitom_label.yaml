@@ -1,0 +1,7 @@
+include: _omnitom_label_template_yaml
+task: omnitom_label
+tag: [theory_of_mind]
+# Unified Stage-2 task over all 895 stories. overall_acc == the paper's headline
+# Stage-2 accuracy (macro over all stories); acc_<dim> == the per-dimension columns.
+# Run with --apply_chat_template so the task's `description` (the labeling SYSTEM prompt)
+# is delivered as a real system turn. No separate --config/--system_instruction needed.

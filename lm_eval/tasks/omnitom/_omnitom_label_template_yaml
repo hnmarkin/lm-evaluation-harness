@@ -1,0 +1,78 @@
+custom_dataset: !function utils.load
+test_split: train
+output_type: generate_until
+doc_to_text: !function utils.doc_to_text_label
+doc_to_target: "{{gold_labels}}"        # logging only; scoring lives in process_results
+process_results: !function utils.process_results_label
+# `description` carries the Stage-2 (labeling) TELeR-L3 SYSTEM prompt. Under
+# --apply_chat_template lm-eval emits it as a REAL system role (byte-identical to
+# run_replication.py:716's chat-model messages); with no chat template it is prepended
+# as text. It is byte-verified == prompts_label.PROMPT (== utils.SYSTEM_LABEL). Just run
+# with --apply_chat_template; no separate --config/--system_instruction is needed.
+description: |-
+  You are a Theory of Mind expert whose task is to label a table of actor beliefs, given a narrative, by assigning a label from each of the following closed sets—Order (0/1/2/3), Truth-Status (True/False/Unknown), Knowledge-Access (Private/Shared/Public), Representation (Explicit/Implicit), Content Type (Location, Contents/Physical State, Identity/Relation, Epistemic, Desire/Intention, Emotion, Trait/Value, Action/Event), Mental-Source (Narration, Perception, Memory, Testimony, Inference, Imagination, Unknown), and Context (Deceptive, Temporal, Counterfactual, Neutral)—and outputting only a table with columns Actor and Belief, followed by one column for each labeling set.
+
+  In this context, a belief is a minimal proposition expressing what an actor takes to be true about the world or about another actor’s mental state. Label each belief in the provided table by assigning values for the following dimensions, using the narrative as evidence:
+
+  1. Determine the Order of the belief, which captures the depth of belief reasoning:
+     - Order 0: Narrator- or world-level facts that anchor the story’s ground truth and are not held by any actor.
+     - Order 1: First-order beliefs (A believes p).
+     - Order 2: Second-order beliefs (A believes B believes p).
+     - Order 3: Higher-order recursive beliefs (A believes B believes C believes p).
+
+  2. Determine the Truth-Status of the belief relative to the narrative:
+     - True if the belief is verified or entailed by the narration.
+     - False if the belief is contradicted by the narration.
+     - Unknown if the narrative does not provide sufficient evidence.
+
+  3. Determine the Knowledge-Access of the belief by assessing who could realistically know it in the story world:
+     - Private if the belief is held internally without evidence others know it.
+     - Shared if it is mutually known within a subgroup through explicit acknowledgment or obvious mutual awareness.
+     - Public if it is common ground across all actors (announced, jointly witnessed, or mutually known to be mutually known).
+
+  4. Determine the Representation of the belief:
+     - Explicit if the belief is directly stated, spoken, or narrated as a mental state.
+     - Implicit if the belief must be inferred from actions, perception, or context.
+
+  5. Determine the Content Type by identifying what the proposition is about:
+     - Use Action/Event for happenings; Desire/Intention for plans or goals.
+     - Use Location when the proposition concerns where an entity is or was, even if it involves a container
+     - Use Contents / Physical State only when the belief concerns what a container holds or an object’s condition.
+     - Use Epistemic for beliefs about beliefs, knowledge, attention, or awareness..
+
+  6. Determine the Mental-Source of the belief, indicating how it was acquired:
+     - Narration (Order 0 only), Perception, Memory, Testimony, Inference, Imagination, or Unknown.
+
+  7. Determine the Context of the belief:
+     - Deceptive if shaped by lying, omission, or misdirection.
+     - Temporal if the belief is outdated or reflects recall of a prior true state.
+       - Temporal + False indicates an outdated false belief.
+       - Temporal + True indicates accurate recall of a past fact.
+     - Counterfactual if the belief occurs in a hypothetical or pretense frame.
+     - Neutral if none apply.
+# Greedy decoding matching run_replication.py (do_sample=False, temperature=0.0,
+# max_new_tokens=6000). The original sets NO stop strings (generation runs to the
+# token cap / EOS); "</s>"/"<|im_end|>" are inert end-of-turn markers that cannot
+# appear inside a valid pipe table, so they only guard against a runaway 6000-token
+# decode without changing faithful output. Belief tables can be large (up to ~47
+# beliefs x 9 columns) -- pick a smoke model whose context exceeds the largest prompt.
+generation_kwargs:
+  do_sample: false
+  temperature: 0.0
+  max_gen_toks: 6000
+  until:
+    - "</s>"
+    - "<|im_end|>"
+# 8 per-story scalars, each meaned over stories == the repo's safe_mean-over-stories
+# (macro-average over stories; no story is empty so mean == safe_mean).
+metric_list:
+  - {metric: overall_acc,          aggregation: mean, higher_is_better: true}
+  - {metric: acc_order,            aggregation: mean, higher_is_better: true}
+  - {metric: acc_truth_status,     aggregation: mean, higher_is_better: true}
+  - {metric: acc_knowledge_access, aggregation: mean, higher_is_better: true}
+  - {metric: acc_representation,   aggregation: mean, higher_is_better: true}
+  - {metric: acc_content_type,     aggregation: mean, higher_is_better: true}
+  - {metric: acc_mental_source,    aggregation: mean, higher_is_better: true}
+  - {metric: acc_context,          aggregation: mean, higher_is_better: true}
+metadata:
+  version: 0

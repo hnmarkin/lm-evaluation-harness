@@ -1,0 +1,15 @@
+group: rectom_cot
+tag: [theory_of_mind]
+task:
+  - rectom_cot_fine_intent_rec
+  - rectom_cot_coarse_intent_rec
+  - rectom_cot_belief_rec
+  - rectom_cot_fine_intent_seeker
+  - rectom_cot_coarse_intent_seeker
+  - rectom_cot_desire_seeker
+  - rectom_cot_prediction_rec
+  - rectom_cot_judgement_rec
+  - rectom_cot_prediction_seeker
+  - rectom_cot_judgement_seeker
+metadata:
+  version: 0

@@ -1,0 +1,5 @@
+include: _rectom_template_yaml
+task: rectom_desire_seeker
+tag: [theory_of_mind]
+dataset_kwargs:
+  task_id: desire_seeker

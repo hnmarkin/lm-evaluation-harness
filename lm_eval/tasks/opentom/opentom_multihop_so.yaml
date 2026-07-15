@@ -1,0 +1,20 @@
+include: _opentom_template_yaml
+task: opentom_multihop_so
+tag: [theory_of_mind, opentom]
+dataset_kwargs:
+  genre: multihop
+  order: so
+# multihop_so mixes fullness + accessibility questions. `macro_f1`/`acc` are the
+# combined "overall" number (evaluate.py's f13/acc3); `fullness_f1`/`accessibility_f1`
+# give the per-subgenre breakdown evaluate.py also reports.
+process_results: !function utils.process_results_multihop
+metric_list:
+  - {metric: macro_f1,         aggregation: !function utils.agg_macro_f1,         higher_is_better: true}
+  - {metric: macro_f1_std,     aggregation: !function utils.agg_macro_f1_std,     higher_is_better: false}
+  - {metric: macro_f1_strict,  aggregation: !function utils.agg_macro_f1_strict,  higher_is_better: true}
+  - {metric: acc,              aggregation: !function utils.agg_acc,              higher_is_better: true}
+  - {metric: acc_std,          aggregation: !function utils.agg_acc_std,          higher_is_better: false}
+  - {metric: acc_strict,       aggregation: !function utils.agg_acc_strict,      higher_is_better: true}
+  - {metric: corrupt_rate,     aggregation: !function utils.agg_corrupt_rate,     higher_is_better: false}
+  - {metric: fullness_f1,      aggregation: !function utils.agg_fullness_f1,      higher_is_better: true}
+  - {metric: accessibility_f1, aggregation: !function utils.agg_accessibility_f1, higher_is_better: true}

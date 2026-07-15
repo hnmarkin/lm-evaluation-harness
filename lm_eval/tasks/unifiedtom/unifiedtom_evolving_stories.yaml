@@ -1,0 +1,7 @@
+include: _unifiedtom_template_yaml
+task: unifiedtom_evolving_stories
+task_alias: UnifiedToM Evolving Stories direct
+tag: [theory_of_mind]
+dataset_kwargs:
+  subset: evolving_stories
+

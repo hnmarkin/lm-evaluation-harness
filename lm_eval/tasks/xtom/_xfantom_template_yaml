@@ -1,0 +1,147 @@
+custom_dataset: !function utils.load_xfantom
+test_split: train
+output_type: generate_until
+doc_to_text: !function utils.doc_to_text
+doc_to_target: "{{target}}"
+process_results: !function utils.process_results_xfantom
+generation_kwargs:
+  # Qwen-2.5-7B-Instruct settings reported in XToM Appendix C.1.
+  do_sample: true
+  temperature: 0.5
+  top_p: 0.7
+  max_gen_toks: 256
+  until:
+    - "</s>"
+    - "<|im_end|>"
+metric_list:
+  - metric: en_belief_acc
+    aggregation: !function utils.agg_en_belief_acc
+    higher_is_better: true
+  - metric: en_belief_first_acc
+    aggregation: !function utils.agg_en_belief_first_acc
+    higher_is_better: true
+  - metric: en_belief_second_acc
+    aggregation: !function utils.agg_en_belief_second_acc
+    higher_is_better: true
+  - metric: en_belief_acyclic_acc
+    aggregation: !function utils.agg_en_belief_acyclic_acc
+    higher_is_better: true
+  - metric: en_belief_cyclic_acc
+    aggregation: !function utils.agg_en_belief_cyclic_acc
+    higher_is_better: true
+  - metric: en_fact_acc
+    aggregation: !function utils.agg_en_fact_acc
+    higher_is_better: true
+  - metric: en_invalid_rate
+    aggregation: !function utils.agg_en_invalid_rate
+    higher_is_better: false
+  - metric: zh_belief_acc
+    aggregation: !function utils.agg_zh_belief_acc
+    higher_is_better: true
+  - metric: zh_belief_first_acc
+    aggregation: !function utils.agg_zh_belief_first_acc
+    higher_is_better: true
+  - metric: zh_belief_second_acc
+    aggregation: !function utils.agg_zh_belief_second_acc
+    higher_is_better: true
+  - metric: zh_belief_acyclic_acc
+    aggregation: !function utils.agg_zh_belief_acyclic_acc
+    higher_is_better: true
+  - metric: zh_belief_cyclic_acc
+    aggregation: !function utils.agg_zh_belief_cyclic_acc
+    higher_is_better: true
+  - metric: zh_fact_acc
+    aggregation: !function utils.agg_zh_fact_acc
+    higher_is_better: true
+  - metric: zh_invalid_rate
+    aggregation: !function utils.agg_zh_invalid_rate
+    higher_is_better: false
+  - metric: de_belief_acc
+    aggregation: !function utils.agg_de_belief_acc
+    higher_is_better: true
+  - metric: de_belief_first_acc
+    aggregation: !function utils.agg_de_belief_first_acc
+    higher_is_better: true
+  - metric: de_belief_second_acc
+    aggregation: !function utils.agg_de_belief_second_acc
+    higher_is_better: true
+  - metric: de_belief_acyclic_acc
+    aggregation: !function utils.agg_de_belief_acyclic_acc
+    higher_is_better: true
+  - metric: de_belief_cyclic_acc
+    aggregation: !function utils.agg_de_belief_cyclic_acc
+    higher_is_better: true
+  - metric: de_fact_acc
+    aggregation: !function utils.agg_de_fact_acc
+    higher_is_better: true
+  - metric: de_invalid_rate
+    aggregation: !function utils.agg_de_invalid_rate
+    higher_is_better: false
+  - metric: fr_belief_acc
+    aggregation: !function utils.agg_fr_belief_acc
+    higher_is_better: true
+  - metric: fr_belief_first_acc
+    aggregation: !function utils.agg_fr_belief_first_acc
+    higher_is_better: true
+  - metric: fr_belief_second_acc
+    aggregation: !function utils.agg_fr_belief_second_acc
+    higher_is_better: true
+  - metric: fr_belief_acyclic_acc
+    aggregation: !function utils.agg_fr_belief_acyclic_acc
+    higher_is_better: true
+  - metric: fr_belief_cyclic_acc
+    aggregation: !function utils.agg_fr_belief_cyclic_acc
+    higher_is_better: true
+  - metric: fr_fact_acc
+    aggregation: !function utils.agg_fr_fact_acc
+    higher_is_better: true
+  - metric: fr_invalid_rate
+    aggregation: !function utils.agg_fr_invalid_rate
+    higher_is_better: false
+  - metric: ja_belief_acc
+    aggregation: !function utils.agg_ja_belief_acc
+    higher_is_better: true
+  - metric: ja_belief_first_acc
+    aggregation: !function utils.agg_ja_belief_first_acc
+    higher_is_better: true
+  - metric: ja_belief_second_acc
+    aggregation: !function utils.agg_ja_belief_second_acc
+    higher_is_better: true
+  - metric: ja_belief_acyclic_acc
+    aggregation: !function utils.agg_ja_belief_acyclic_acc
+    higher_is_better: true
+  - metric: ja_belief_cyclic_acc
+    aggregation: !function utils.agg_ja_belief_cyclic_acc
+    higher_is_better: true
+  - metric: ja_fact_acc
+    aggregation: !function utils.agg_ja_fact_acc
+    higher_is_better: true
+  - metric: ja_invalid_rate
+    aggregation: !function utils.agg_ja_invalid_rate
+    higher_is_better: false
+  - metric: fact_average_accuracy
+    aggregation: !function utils.agg_fact_average_accuracy
+    higher_is_better: true
+  - metric: fact_consistently_correct
+    aggregation: !function utils.agg_fact_consistently_correct
+    higher_is_better: true
+  - metric: fact_consistently_false
+    aggregation: !function utils.agg_fact_consistently_false
+    higher_is_better: true
+  - metric: fact_consistent_answer
+    aggregation: !function utils.agg_fact_consistent_answer
+    higher_is_better: true
+  - metric: belief_average_accuracy
+    aggregation: !function utils.agg_belief_average_accuracy
+    higher_is_better: true
+  - metric: belief_consistently_correct
+    aggregation: !function utils.agg_belief_consistently_correct
+    higher_is_better: true
+  - metric: belief_consistently_false
+    aggregation: !function utils.agg_belief_consistently_false
+    higher_is_better: true
+  - metric: belief_consistent_answer
+    aggregation: !function utils.agg_belief_consistent_answer
+    higher_is_better: true
+metadata:
+  version: 1

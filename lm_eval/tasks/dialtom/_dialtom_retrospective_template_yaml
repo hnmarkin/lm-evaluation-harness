@@ -1,0 +1,25 @@
+custom_dataset: !function utils.load_retrospective
+test_split: train
+output_type: generate_until
+doc_to_text: !function utils.doc_to_text_retrospective
+doc_to_target: "{{gold_letter}}"
+process_results: !function utils.process_results_mcq
+generation_kwargs:
+  # No "\n\n" stop and a generous max_gen_toks: the paper permits reasoning models
+  # (Gemini 3 Pro, GPT-5) to emit internal reasoning/thinking before the final letter
+  # (benchmark.py: reasoning={"effort":"medium"} / ThinkingConfig(include_thoughts=True)).
+  # A tight budget or an early paragraph-break stop truncates mid-<think>, before any
+  # letter appears -- silently scoring 0 with no error (found during smoke-testing
+  # Qwen3-1.7B, whose default `<think>...</think>` preamble alone exceeded 16 tokens).
+  until:
+    - "</s>"
+    - "<|im_end|>"
+  do_sample: false
+  temperature: 0.0
+  max_gen_toks: 1024
+metric_list:
+  - metric: acc
+    aggregation: mean
+    higher_is_better: true
+metadata:
+  version: 0

@@ -1,0 +1,7 @@
+include: _unifiedtom_template_yaml
+task: unifiedtom_sst
+task_alias: UnifiedToM SST direct
+tag: [theory_of_mind]
+dataset_kwargs:
+  subset: sst
+

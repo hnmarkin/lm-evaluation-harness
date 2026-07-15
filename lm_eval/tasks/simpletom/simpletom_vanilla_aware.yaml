@@ -1,0 +1,3 @@
+include: _simpletom_vanilla_template_yaml
+task: simpletom_vanilla_aware
+dataset_name: mental-state-qa

@@ -1,0 +1,22 @@
+include: _tombench_template_yaml
+task: tombench_zh
+tag: [tombench, theory_of_mind]
+# System prompt, verbatim from prompts.py::SystemEvaluatePrompt_zh
+# (paper Table 20). Rendered as a real system turn ONLY under --apply_chat_template.
+description: |-
+  下面给你提供一段故事，一个问题和若干答案选项，请你根据故事内容和给定的问题，按照常理推测，选择一个最可能的答案选项，并输出答案序号。
+  注意：
+  （1）请只输出最可能的答案序号，格式为：[[答案序号]]，例如，最可能的答案选项为“A. 手提包”，则输出“[[A]]”；
+  （2）请必须从给定的答案选项“A、B、C、D”中选择一个做为最可能的答案作为输出，无论故事中是否提供足够的信息，如果你认为故事里没有足够的信息选出答案，请随机输出“[[A]]”，“[[B]]”，“[[C]]”，“[[D]]”其中之一；
+  （3）请只输出在给定的信息下最可能的答案序号，不要输出其他内容。
+dataset_kwargs:
+  language: zh
+  try_times: 5          # paper Sec. 4.1: shuffle option order 5x, majority-vote
+  fix_gold_typo: true
+generation_kwargs:
+  # run_huggingface.py: {"max_length": 4096, "do_sample": False, "top_k": 1} -- greedy, no
+  # stop sequence, answer effectively uncapped. Only EOS markers are used as `until` here.
+  until: ["</s>", "<|im_end|>"]
+  do_sample: false
+  temperature: 0.0
+  max_gen_toks: 512

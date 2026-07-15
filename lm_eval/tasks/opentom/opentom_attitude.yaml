@@ -1,0 +1,5 @@
+include: _opentom_template_yaml
+task: opentom_attitude
+tag: [theory_of_mind, opentom]
+dataset_kwargs:
+  genre: attitude

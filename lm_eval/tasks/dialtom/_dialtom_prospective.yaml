@@ -1,0 +1,11 @@
+group: dialtom_prospective
+task:
+  - dialtom_prospective_mi
+  - dialtom_prospective_esc
+  - dialtom_prospective_pfg
+aggregate_metric_list:
+  - metric: acc
+    aggregation: mean
+    weight_by_size: true
+metadata:
+  version: 0

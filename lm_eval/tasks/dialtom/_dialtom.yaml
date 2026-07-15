@@ -1,0 +1,7 @@
+group: dialtom
+task:
+  - dialtom_retrospective
+  - dialtom_prospective
+  - dialtom_written
+metadata:
+  version: 0

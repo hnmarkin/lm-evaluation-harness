@@ -1,0 +1,22 @@
+custom_dataset: !function utils.load_prospective
+test_split: train
+output_type: generate_until
+doc_to_text: !function utils.doc_to_text_prospective
+doc_to_target: "{{gold_letter}}"
+process_results: !function utils.process_results_mcq
+generation_kwargs:
+  # See dialtom_retrospective's template for why "\n\n" is dropped and the budget is
+  # generous: reasoning-model "thinking" preambles are a permitted part of the paper's
+  # protocol and must not be truncated before the final letter appears.
+  until:
+    - "</s>"
+    - "<|im_end|>"
+  do_sample: false
+  temperature: 0.0
+  max_gen_toks: 1024
+metric_list:
+  - metric: acc
+    aggregation: mean
+    higher_is_better: true
+metadata:
+  version: 0

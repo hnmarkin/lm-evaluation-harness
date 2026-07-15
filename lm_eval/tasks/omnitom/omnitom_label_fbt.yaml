@@ -1,0 +1,5 @@
+include: _omnitom_label_template_yaml
+task: omnitom_label_fbt
+tag: [theory_of_mind, omnitom_label_by_category]
+dataset_kwargs:
+  category: "False Belief Task"
