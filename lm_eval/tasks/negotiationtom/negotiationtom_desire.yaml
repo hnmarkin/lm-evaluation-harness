@@ -1,8 +1,11 @@
-custom_dataset: !function utils.load
+task: negotiationtom_desire
+custom_dataset: !function utils.load_dataset
+dataset_kwargs:
+  mode: desire
 test_split: test
 output_type: multiple_choice
 doc_to_text: !function utils.doc_to_text
-doc_to_choice: choice_letters
+doc_to_choice: choices
 doc_to_target: gold
 metric_list:
   - metric: acc
