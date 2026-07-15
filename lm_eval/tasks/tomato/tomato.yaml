@@ -1,6 +1,5 @@
 group: tomato
 task:
-  - tomato_all
   - tomato_order_1
   - tomato_order_2
   - tomato_mental_state_belief
